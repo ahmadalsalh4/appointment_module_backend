@@ -1,58 +1,70 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Randevu Modülü — API Endpoint Listesi
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Toplam: **28 endpoint**
 
-## About Laravel
+Base URL: `http://localhost:8000/api`
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 🔓 Herkese Açık (Login Gerekmez)
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+| Method | Endpoint                                    | Açıklama                                                      |
+| ------ | ------------------------------------------- | ------------------------------------------------------------- |
+| POST   | `/customer/register`                        | Müşteri kaydı oluşturur                                       |
+| POST   | `/customer/login`                           | Müşteri girişi, token döner                                   |
+| POST   | `/staff/login`                              | Personel/admin girişi, token döner                            |
+| GET    | `/categories`                               | Tüm kategorileri listeler                                     |
+| GET    | `/categories/{id}`                          | Tek kategori detayı                                           |
+| GET    | `/services`                                 | Tüm hizmetleri listeler (`?catagory_id=` ile filtrelenebilir) |
+| GET    | `/services/{id}`                            | Tek hizmet detayı                                             |
+| GET    | `/availability?staff_id=&service_id=&date=` | Belirli personel + hizmet + tarih için boş saatleri döner     |
 
-## Learning Laravel
+---
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## 🔒 Müşteri Girişi Gerektirir (`auth:customer`)
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+| Method | Endpoint                    | Açıklama                                                  |
+| ------ | --------------------------- | --------------------------------------------------------- |
+| POST   | `/customer/logout`          | Çıkış yapar, token'ı iptal eder                           |
+| POST   | `/appointments`             | Yeni randevu oluşturur (kendi adına, çakışma kontrolüyle) |
+| PATCH  | `/appointments/{id}/cancel` | Kendi randevusunu iptal eder                              |
+| GET    | `/my-appointments`          | Sadece kendi randevularını listeler                       |
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+---
 
-## Agentic Development
+## 🔒 Personel/Admin Girişi Gerektirir (`auth:staff`, Rol Bazlı Filtreli)
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+| Method | Endpoint              | Açıklama                                                                                       |
+| ------ | --------------------- | ---------------------------------------------------------------------------------------------- |
+| POST   | `/staff/logout`       | Çıkış yapar                                                                                    |
+| POST   | `/categories`         | Yeni kategori oluşturur                                                                        |
+| PUT    | `/categories/{id}`    | Kategori günceller                                                                             |
+| DELETE | `/categories/{id}`    | Kategori siler                                                                                 |
+| POST   | `/services`           | Yeni hizmet oluşturur                                                                          |
+| PUT    | `/services/{id}`      | Hizmet günceller                                                                               |
+| DELETE | `/services/{id}`      | Hizmet siler                                                                                   |
+| GET    | `/staff-members`      | Tüm personeli listeler                                                                         |
+| POST   | `/staff-members`      | Yeni personel oluşturur (person + staff kaydı)                                                 |
+| GET    | `/staff-members/{id}` | Tek personel detayı                                                                            |
+| PUT    | `/staff-members/{id}` | Personel bilgisi günceller                                                                     |
+| DELETE | `/staff-members/{id}` | Personel siler                                                                                 |
+| GET    | `/appointments`       | **Sıradan personel:** sadece kendi randevuları. **Admin:** sadece yönettiği ekibin randevuları |
+| GET    | `/appointments/{id}`  | Tek randevu detayı (aynı yetki kontrolü — yetkisi yoksa 403)                                   |
+| PUT    | `/appointments/{id}`  | Randevu düzenleme (aynı yetki kontrolü + çakışma kontrolü)                                     |
+| DELETE | `/appointments/{id}`  | Randevu silme (aynı yetki kontrolü)                                                            |
 
-```bash
-composer require laravel/boost --dev
+---
 
-php artisan boost:install
-```
+## Yetkilendirme Kuralları — Özet
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+- **Müşteri**: sadece kendi oluşturduğu randevuları görebilir/iptal edebilir, başkasının randevusuna erişemez.
+- **Sıradan personel (staff)**: sadece kendi üzerine atanmış randevuları görebilir/yönetebilir.
+- **Admin**: sadece kendi yönettiği personellerin (`staff.admin_id` ile bağlı) randevularını görebilir. Başka bir admin'e bağlı personelin randevularını göremez.
 
-## Contributing
+## Query Parametreleri (Filtreleme)
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+`GET /appointments` ve `GET /my-appointments` üzerinde kullanılabilir:
 
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+- `status_id` — duruma göre filtrele
+- `date` — tarihe göre filtrele (`YYYY-MM-DD`)
+- `customer_name` — müşteri adına göre arama
