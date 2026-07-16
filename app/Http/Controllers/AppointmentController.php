@@ -12,32 +12,23 @@ use Carbon\Carbon;
 class AppointmentController extends Controller
 {
     /**
-     * Listeleme + filtreleme + arama
-     */
-    /**
-     * Login olmuş personel/admin'in rolüne göre randevuları döndürür:
-     * - Sıradan personel: sadece kendi randevuları
-     * - Admin: sadece kendi yönettiği personellerin randevuları
+     * Login olmuş personel/admin'in rolüne göre randevuları döndürür
      */
     public function index(Request $request)
     {
-        $loggedInStaff = $request->user(); // Staff instance (auth:staff guard)
+        $loggedInStaff = $request->user();
 
         $query = Appointment::with(['staff.person', 'customer.person', 'service', 'status']);
 
-        // Bu staff bir admin mi kontrol et
         $adminProfile = $loggedInStaff->adminProfile;
 
         if ($adminProfile) {
-            // ADMIN: sadece kendi yönettiği personellerin randevularını gör
             $managedStaffIds = Staff::where('admin_id', $adminProfile->id)->pluck('id');
             $query->whereIn('staff_id', $managedStaffIds);
         } else {
-            // SIRADAN PERSONEL: sadece kendi randevularını gör
             $query->where('staff_id', $loggedInStaff->id);
         }
 
-        // Opsiyonel filtreler (her iki rol için de çalışır)
         if ($request->filled('status_id')) {
             $query->byStatus($request->status_id);
         }
@@ -54,7 +45,20 @@ class AppointmentController extends Controller
     }
 
     /**
-     * Yeni randevu oluşturma
+     * Login olmuş müşterinin sadece kendi randevularını döndürür
+     */
+    public function myAppointments(Request $request)
+    {
+        $appointments = Appointment::where('customer_id', $request->user()->id)
+            ->with(['staff.person', 'service', 'status'])
+            ->orderBy('start_date', 'desc')
+            ->get();
+
+        return response()->json($appointments);
+    }
+
+    /**
+     * Yeni randevu oluşturma (müşteri kendi adına)
      */
     public function store(Request $request)
     {
@@ -62,7 +66,6 @@ class AppointmentController extends Controller
             'staff_id' => 'required|exists:staff,id',
             'service_id' => 'required|exists:services,id',
             'start_date' => 'required|date|after:now',
-            // customer_id artık validate edilmiyor, request'ten alınmıyor
         ]);
 
         $service = Service::findOrFail($validated['service_id']);
@@ -72,12 +75,14 @@ class AppointmentController extends Controller
         $conflict = Appointment::conflicting($validated['staff_id'], $startDate, $endDate)->exists();
 
         if ($conflict) {
-            return response()->json(['message' => 'Bu saat aralığında personelin başka bir randevusu var.'], 409);
+            return response()->json([
+                'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
+            ], 409);
         }
 
         $appointment = Appointment::create([
             'staff_id' => $validated['staff_id'],
-            'customer_id' => $request->user()->id, // ← Token'dan gelen gerçek kullanıcı
+            'customer_id' => $request->user()->id,
             'service_id' => $validated['service_id'],
             'state_id' => Status::PENDING,
             'start_date' => $startDate,
@@ -87,42 +92,25 @@ class AppointmentController extends Controller
         return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']), 201);
     }
 
+    /**
+     * Tek randevu detayı (yetki kontrolüyle)
+     */
     public function show(Request $request, Appointment $appointment)
     {
-        $loggedInStaff = $request->user();
-        $adminProfile = $loggedInStaff->adminProfile;
-
-        if ($adminProfile) {
-            $managedStaffIds = Staff::where('admin_id', $adminProfile->id)->pluck('id');
-            if (!$managedStaffIds->contains($appointment->staff_id)) {
-                return response()->json(['message' => 'Bu randevuyu görme yetkiniz yok'], 403);
-            }
-        } else {
-            if ($appointment->staff_id !== $loggedInStaff->id) {
-                return response()->json(['message' => 'Bu randevuyu görme yetkiniz yok'], 403);
-            }
+        if (!$this->canAccess($request->user(), $appointment)) {
+            return response()->json(['message' => 'Bu randevuyu görme yetkiniz yok'], 403);
         }
 
         return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']));
     }
 
     /**
-     * Randevu düzenleme
+     * Randevu düzenleme (yetki kontrolüyle)
      */
     public function update(Request $request, Appointment $appointment)
     {
-        $loggedInStaff = $request->user();
-        $adminProfile = $loggedInStaff->adminProfile;
-
-        if ($adminProfile) {
-            $managedStaffIds = Staff::where('admin_id', $adminProfile->id)->pluck('id');
-            if (!$managedStaffIds->contains($appointment->staff_id)) {
-                return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
-            }
-        } else {
-            if ($appointment->staff_id !== $loggedInStaff->id) {
-                return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
-            }
+        if (!$this->canAccess($request->user(), $appointment)) {
+            return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
         }
 
         $validated = $request->validate([
@@ -140,7 +128,6 @@ class AppointmentController extends Controller
             : $appointment->start_date;
         $endDate = $startDate->copy()->addMinutes($service->duration);
 
-        // Çakışma kontrolü — kendi kaydını hariç tutarak
         $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
 
         if ($conflict) {
@@ -160,12 +147,11 @@ class AppointmentController extends Controller
     }
 
     /**
-     * Randevu iptali (soft — silmiyoruz, durumunu değiştiriyoruz)
+     * Randevu iptali (müşteri, sadece kendi randevusu)
      */
     public function cancel(Request $request, Appointment $appointment)
     {
-        // Eğer müşteri olarak giriş yapılmışsa, sadece kendi randevusunu iptal edebilir
-        if ($request->user() instanceof \App\Models\Customer && $appointment->customer_id !== $request->user()->id) {
+        if ($appointment->customer_id !== $request->user()->id) {
             return response()->json(['message' => 'Bu randevuyu iptal etme yetkiniz yok'], 403);
         }
 
@@ -178,18 +164,31 @@ class AppointmentController extends Controller
     }
 
     /**
-     * Gerçek silme (nadiren kullanılır, genelde cancel tercih edilir)
+     * Randevu silme (personel/admin, yetki kontrolüyle)
      */
-    public function destroy(Appointment $appointment)
+    public function destroy(Request $request, Appointment $appointment)
     {
+        if (!$this->canAccess($request->user(), $appointment)) {
+            return response()->json(['message' => 'Bu randevuyu silme yetkiniz yok'], 403);
+        }
+
         $appointment->delete();
 
         return response()->json(['message' => 'Randevu silindi']);
     }
 
-    // AppointmentController.php içine ekleyin
-
     /**
-     * Login olmuş müşterinin SADECE kendi randevularını döndürür
+     * Yardımcı: login olmuş personel/admin bu randevuya erişebilir mi?
      */
+    private function canAccess(Staff $loggedInStaff, Appointment $appointment): bool
+    {
+        $adminProfile = $loggedInStaff->adminProfile;
+
+        if ($adminProfile) {
+            $managedStaffIds = Staff::where('admin_id', $adminProfile->id)->pluck('id');
+            return $managedStaffIds->contains($appointment->staff_id);
+        }
+
+        return $appointment->staff_id === $loggedInStaff->id;
+    }
 }

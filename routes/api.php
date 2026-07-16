@@ -31,7 +31,7 @@ Route::middleware('auth:customer')->group(function () {
     Route::post('/customer/logout', [CustomerAuthController::class, 'logout']);
     Route::post('/appointments', [AppointmentController::class, 'store']);
     Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
-    Route::get('/my-appointments', [AppointmentController::class, 'myAppointments']); // müşterinin SADECE kendi randevuları
+    Route::get('/my-appointments', [AppointmentController::class, 'myAppointments']);
 });
 
 // ============ PERSONEL/ADMIN GİRİŞİ GEREKTİRİR ============
@@ -42,7 +42,7 @@ Route::middleware('auth:staff')->group(function () {
     Route::apiResource('services', ServiceController::class)->except(['index', 'show']);
     Route::apiResource('staff-members', StaffController::class);
 
-    Route::get('/appointments', [AppointmentController::class, 'index']); // artık rol bazlı filtreli
+    Route::get('/appointments', [AppointmentController::class, 'index']);
     Route::get('/appointments/{appointment}', [AppointmentController::class, 'show']);
     Route::put('/appointments/{appointment}', [AppointmentController::class, 'update']);
     Route::delete('/appointments/{appointment}', [AppointmentController::class, 'destroy']);
