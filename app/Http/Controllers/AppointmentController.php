@@ -16,18 +16,7 @@ class AppointmentController extends Controller
      */
     public function index(Request $request)
     {
-        $loggedInStaff = $request->user();
-
         $query = Appointment::with(['staff.person', 'customer.person', 'service', 'status']);
-
-        $adminProfile = $loggedInStaff->adminProfile;
-
-        if ($adminProfile) {
-            $managedStaffIds = Staff::where('admin_id', $adminProfile->id)->pluck('id');
-            $query->whereIn('staff_id', $managedStaffIds);
-        } else {
-            $query->where('staff_id', $loggedInStaff->id);
-        }
 
         if ($request->filled('status_id')) {
             $query->byStatus($request->status_id);
@@ -109,40 +98,29 @@ class AppointmentController extends Controller
      */
     public function update(Request $request, Appointment $appointment)
     {
+        // 1. Yetki kontrolü (Aynı kalsın)
         if (!$this->canAccess($request->user(), $appointment)) {
             return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
         }
 
+        // 2. SADECE state_id alanının güncellenmesine izin ver
         $validated = $request->validate([
-            'staff_id' => 'sometimes|exists:staff,id',
-            'service_id' => 'sometimes|exists:services,id',
-            'start_date' => 'sometimes|date|after:now',
+            'state_id' => 'required|exists:statuses,id', // Sadece durum değiştirilebilir
         ]);
 
-        $staffId = $validated['staff_id'] ?? $appointment->staff_id;
-        $serviceId = $validated['service_id'] ?? $appointment->service_id;
-        $service = Service::findOrFail($serviceId);
+        // (Opsiyonel) İptal edilmiş veya tamamlanmış bir randevunun durumu tekrar değiştirilemesin isterseniz:
+        /*
+    if ($appointment->state_id == Status::CANCELLED || $appointment->state_id == Status::COMPLETED) {
+        return response()->json(['message' => 'Bu randevunun durumu artık değiştirilemez.'], 422);
+    }
+    */
 
-        $startDate = isset($validated['start_date'])
-            ? Carbon::parse($validated['start_date'])
-            : $appointment->start_date;
-        $endDate = $startDate->copy()->addMinutes($service->duration);
-
-        $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
-
-        if ($conflict) {
-            return response()->json([
-                'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
-            ], 409);
-        }
-
+        // 3. Sadece state alanını güncelle
         $appointment->update([
-            'staff_id' => $staffId,
-            'service_id' => $serviceId,
-            'start_date' => $startDate,
-            'end_date' => $endDate,
+            'state_id' => $validated['state_id'],
         ]);
 
+        // 4. Güncellenmiş randevuyu ilişkileriyle birlikte döndür
         return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']));
     }
 

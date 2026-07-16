@@ -24,10 +24,11 @@ class StaffController extends Controller
             'job_title' => 'required|string|max:100',
             'job_email' => 'required|email|unique:staff,job_email',
             'password' => 'required|string|min:6',
-            'admin_id' => 'nullable|exists:admin,id',
+            // 'admin_id' artık validate içinde değildir, çünkü kullanıcıdan gelmeyecek!
         ]);
 
         $staff = DB::transaction(function () use ($validated) {
+            // 1. Personel (kişi) bilgilerini oluştur
             $person = Person::create([
                 'name' => $validated['name'],
                 'surname' => $validated['surname'],
@@ -35,40 +36,41 @@ class StaffController extends Controller
                 'email' => $validated['email'],
             ]);
 
+            // Sisteme giriş yapan admin'in kendi ID'sini almak için:
+            $creatorAdminId = auth()->id();
+
             return Staff::create([
                 'person_id' => $person->id,
                 'job_title' => $validated['job_title'],
                 'job_email' => $validated['job_email'],
-                'password' => $validated['password'],
-                'admin_id' => $validated['admin_id'] ?? null,
+                'password' => bcrypt($validated['password']),
+                'admin_id' => $creatorAdminId, // Login olan adminin ID'si
             ]);
         });
 
         return response()->json($staff->load('person'), 201);
     }
 
-    public function show(Staff $staff)
+    public function show(Staff $staff_member)
     {
-        return response()->json($staff->load(['person', 'adminProfile']));
+        return response()->json($staff_member->load(['person', 'adminProfile']));
     }
 
-    public function update(Request $request, Staff $staff)
+    public function update(Request $request, Staff $staff_member)
     {
         $validated = $request->validate([
             'job_title' => 'sometimes|string|max:100',
-            'job_email' => 'sometimes|email|unique:staff,job_email,' . $staff->id,
-            'admin_id' => 'nullable|exists:admin,id',
+            'job_email' => 'sometimes|email|unique:staff,job_email,' . $staff_member->id,
         ]);
 
-        $staff->update($validated);
+        $staff_member->update($validated);
 
-        return response()->json($staff);
+        return response()->json($staff_member);
     }
 
-    public function destroy(Staff $staff)
+    public function destroy(Staff $staff_member)
     {
-        $staff->delete();
-
+        $staff_member->delete();
         return response()->json(['message' => 'Personel silindi']);
     }
 }

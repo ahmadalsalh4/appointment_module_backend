@@ -22,7 +22,7 @@ class Staff extends Authenticatable
 
     // Sabit mesai blokları — öğle arası (12:00-13:00) otomatik hariç kalır
     public const WORK_BLOCKS = [
-        ['start' => '09:00', 'end' => '12:00'],
+        ['start' => '08:00', 'end' => '12:00'],
         ['start' => '13:00', 'end' => '17:00'],
     ];
 
