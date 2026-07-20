@@ -131,7 +131,22 @@ class AppointmentController extends Controller
         $validated = $request->validate([
             'staff_id' => 'required|exists:staff,id',
             'service_id' => 'required|exists:services,id',
-            'start_date' => 'required|date|after:now',
+            'start_date' => [
+                'required',
+                'date',
+                'after:now',
+                function ($attribute, $value, $fail) {
+                    try {
+                        $date = Carbon::parse($value);
+                        // Dakika 00, 15, 30 veya 45 olmalı ve saniye 0 olmalı
+                        if ($date->minute % 15 !== 0 || $date->second !== 0) {
+                            $fail('Randevu başlangıç saati sadece :00, :15, :30 veya :45. dakikalara ayarlanabilir (Örn: 15:00:00, 15:15:00).');
+                        }
+                    } catch (\Exception $e) {
+                        $fail('Geçersiz tarih formatı.');
+                    }
+                },
+            ],
         ]);
 
         $service = Service::findOrFail($validated['service_id']);

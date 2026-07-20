@@ -54,7 +54,7 @@ class StaffController extends Controller
     {
         $validated = $request->validate([
             'job_title' => 'sometimes|string|max:100',
-            'job_email' => 'sometimes|email|unique:staff,job_email,' . $staff_member->id,
+            'email' => 'sometimes|email|unique:staff,email,' . $staff_member->id,
         ]);
 
         $staff_member->update($validated);
