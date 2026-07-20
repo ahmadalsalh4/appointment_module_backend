@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CustomerAuthController;
 use App\Http\Controllers\StaffAuthController;
 use App\Http\Controllers\AdminAuthController;
+use App\Http\Controllers\AdminProfileController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\StaffController;
@@ -57,7 +58,7 @@ Route::middleware('auth:staff')->group(function () {
 // ============ ADMIN GİRİŞİ GEREKTİRİR ============
 Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/logout', [AdminAuthController::class, 'logout']);
-    Route::get('/admin/profile', [CustomerProfileController::class, 'show']);
+    Route::get('/admin/profile', [AdminProfileController::class, 'show']);
 
     Route::apiResource('categories', CategoryController::class)->except(['index', 'show']);
     Route::apiResource('services', ServiceController::class)->except(['index', 'show']);
