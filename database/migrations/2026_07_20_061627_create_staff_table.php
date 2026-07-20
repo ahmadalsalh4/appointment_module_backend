@@ -12,10 +12,9 @@ return new class extends Migration
             $table->id();
             $table->foreignId('person_id')->constrained('persons')->onDelete('cascade');
             $table->string('job_title');
-            $table->string('job_email')->unique();
+            $table->string('email')->unique();
             $table->string('password');
-            // admin tablosu henüz yok, FK constraint'i ayrı migration'da ekliyoruz
-            $table->unsignedBigInteger('admin_id')->nullable();
+            $table->foreignId('admin_id')->nullable()->constrained('admin')->onDelete('set null');
             $table->timestamps();
         });
     }

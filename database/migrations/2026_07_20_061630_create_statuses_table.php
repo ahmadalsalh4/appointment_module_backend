@@ -8,15 +8,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('staff', function (Blueprint $table) {
-            $table->foreign('admin_id')->references('id')->on('admin')->onDelete('set null');
+        Schema::create('statuses', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::table('staff', function (Blueprint $table) {
-            $table->dropForeign(['admin_id']);
-        });
+        Schema::dropIfExists('statuses');
     }
 };

@@ -45,9 +45,6 @@ class Appointment extends Model
         return $this->belongsTo(Status::class, 'state_id');
     }
 
-    /**
-     * Belirli bir staff + zaman aralığıyla çakışan randevuları bulur
-     */
     public function scopeConflicting($query, $staffId, $start, $end, $excludeId = null)
     {
         $query->where('staff_id', $staffId)

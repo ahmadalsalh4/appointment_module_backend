@@ -9,9 +9,9 @@ class Person extends Model
 {
     use HasFactory;
 
-    protected $table = 'persons'; // ← BU SATIRI EKLEYİN
+    protected $table = 'persons';
 
-    protected $fillable = ['name', 'surname', 'phone_number', 'email'];
+    protected $fillable = ['name', 'surname', 'phone_number'];
 
     public function customer()
     {
@@ -21,5 +21,10 @@ class Person extends Model
     public function staff()
     {
         return $this->hasOne(Staff::class);
+    }
+
+    public function admin()
+    {
+        return $this->hasOne(Admin::class);
     }
 }

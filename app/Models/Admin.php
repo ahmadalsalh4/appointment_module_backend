@@ -3,22 +3,26 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Laravel\Sanctum\HasApiTokens;
 
-class Admin extends Model
+class Admin extends Authenticatable
 {
-    use HasFactory;
+    use HasFactory, HasApiTokens;
 
     protected $table = 'admin';
 
-    protected $fillable = ['staff_id', 'permission_level'];
+    protected $fillable = ['person_id', 'email', 'password'];
 
-    /**
-     * Adminin kendi personel/login kaydı
-     */
-    public function staff()
+    protected $hidden = ['password'];
+
+    protected $casts = [
+        'password' => 'hashed',
+    ];
+
+    public function person()
     {
-        return $this->belongsTo(Staff::class, 'staff_id');
+        return $this->belongsTo(Person::class);
     }
 
     /**

@@ -8,15 +8,17 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('statuses', function (Blueprint $table) {
+        Schema::create('admin', function (Blueprint $table) {
             $table->id();
-            $table->string('name'); // pending, confirmed, completed, cancelled
+            $table->foreignId('person_id')->constrained('persons')->onDelete('cascade');
+            $table->string('email')->unique();
+            $table->string('password');
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('statuses');
+        Schema::dropIfExists('admin');
     }
 };

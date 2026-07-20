@@ -11,7 +11,6 @@ class Status extends Model
 
     protected $fillable = ['name'];
 
-    // Seeder'da bu ID'lerle eklediğinizi varsayarak
     const PENDING = 1;
     const CONFIRMED = 2;
     const COMPLETED = 3;

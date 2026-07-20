@@ -12,7 +12,7 @@ class Staff extends Authenticatable
 
     protected $table = 'staff';
 
-    protected $fillable = ['person_id', 'job_title', 'job_email', 'password', 'admin_id'];
+    protected $fillable = ['person_id', 'job_title', 'email', 'password', 'admin_id'];
 
     protected $hidden = ['password'];
 
@@ -22,7 +22,7 @@ class Staff extends Authenticatable
 
     // Sabit mesai blokları — öğle arası (12:00-13:00) otomatik hariç kalır
     public const WORK_BLOCKS = [
-        ['start' => '08:00', 'end' => '12:00'],
+        ['start' => '09:00', 'end' => '12:00'],
         ['start' => '13:00', 'end' => '17:00'],
     ];
 
@@ -37,25 +37,10 @@ class Staff extends Authenticatable
     }
 
     /**
-     * Bu staff'ın kendi admin kaydı (eğer admin ise)
-     */
-    public function adminProfile()
-    {
-        return $this->hasOne(Admin::class, 'staff_id');
-    }
-
-    /**
      * Bu staff'ın bağlı olduğu yönetici admin
      */
     public function managingAdmin()
     {
         return $this->belongsTo(Admin::class, 'admin_id');
-    }
-
-    public function scopeOnDate($query, $date)
-    {
-        return $query->whereHas('appointments', function ($q) use ($date) {
-            $q->whereDate('start_date', $date);
-        });
     }
 }
