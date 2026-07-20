@@ -9,9 +9,7 @@ use Illuminate\Validation\ValidationException;
 
 class AdminAuthController extends Controller
 {
-    /**
-     * Admin girişi — artık staff üzerinden değil, doğrudan admin tablosundan
-     */
+
     public function login(Request $request)
     {
         $request->validate([

@@ -12,25 +12,20 @@ class StaffAuthController extends Controller
     // Staff kayıtları muhtemelen admin tarafından yapılır, ama basit bir register bırakıyorum
     public function login(Request $request)
     {
-        $request->validate([
-            'job_email' => 'required|email',
-            'password' => 'required',
-        ]);
+        $request->validate(['email' => 'required|email', 'password' => 'required']);
 
-        $staff = Staff::where('job_email', $request->job_email)->first();
+        $staff = Staff::where('email', $request->email)->first();
 
         if (!$staff || !Hash::check($request->password, $staff->password)) {
-            throw ValidationException::withMessages([
-                'job_email' => ['Bilgiler hatalı.'],
-            ]);
+            throw ValidationException::withMessages(['email' => ['Bilgiler hatalı.']]);
         }
 
         $token = $staff->createToken('staff-token')->plainTextToken;
 
         return response()->json([
-            'staff' => $staff->load(['person', 'adminProfile']),
-            'is_admin' => $staff->adminProfile()->exists(),
+            'staff' => $staff->load(['person', 'managingAdmin']),
             'token' => $token,
+            // is_admin kaldırıldı — admin artık ayrı bir login akışı (AdminAuthController)
         ]);
     }
 

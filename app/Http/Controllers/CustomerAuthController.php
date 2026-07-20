@@ -17,7 +17,7 @@ class CustomerAuthController extends Controller
             'name' => 'required|string|max:100',
             'surname' => 'required|string|max:100',
             'phone_number' => 'nullable|string|max:20',
-            'email' => 'required|email|unique:persons,email',
+            'email' => 'required|email|unique:customers,email',   // ✅ customers tablosuna göre
             'password' => 'required|string|min:6',
         ]);
 
@@ -26,46 +26,32 @@ class CustomerAuthController extends Controller
                 'name' => $validated['name'],
                 'surname' => $validated['surname'],
                 'phone_number' => $validated['phone_number'] ?? null,
-                'email' => $validated['email'],
             ]);
 
             return Customer::create([
                 'person_id' => $person->id,
-                'password' => $validated['password'], // Model'de 'hashed' cast var, otomatik hashlenir
+                'email' => $validated['email'],   // ✅ email artık customer'da
+                'password' => $validated['password'],
             ]);
         });
 
         $token = $customer->createToken('customer-token')->plainTextToken;
 
-        return response()->json([
-            'customer' => $customer->load('person'),
-            'token' => $token,
-        ], 201);
+        return response()->json(['customer' => $customer->load('person'), 'token' => $token], 201);
     }
 
     public function login(Request $request)
     {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
-        ]);
+        $request->validate(['email' => 'required|email', 'password' => 'required']);
 
-        $customer = Customer::whereHas('person', function ($q) use ($request) {
-            $q->where('email', $request->email);
-        })->first();
+        $customer = Customer::where('email', $request->email)->first();   // ✅ doğrudan customer'dan
 
         if (!$customer || !Hash::check($request->password, $customer->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['Bilgiler hatalı.'],
-            ]);
+            throw ValidationException::withMessages(['email' => ['Bilgiler hatalı.']]);
         }
 
         $token = $customer->createToken('customer-token')->plainTextToken;
-
-        return response()->json([
-            'customer' => $customer->load('person'),
-            'token' => $token,
-        ]);
+        return response()->json(['customer' => $customer->load('person'), 'token' => $token]);
     }
 
     public function logout(Request $request)

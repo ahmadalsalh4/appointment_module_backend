@@ -43,6 +43,7 @@ Route::middleware('auth:customer')->group(function () {
 Route::middleware('auth:staff')->group(function () {
     Route::post('/staff/logout', [StaffAuthController::class, 'logout']);
     Route::get('/staff/appointments', [AppointmentController::class, 'myStaffAppointments']);
+    Route::patch('/staff/appointments/{appointment}/status', [AppointmentController::class, 'updateStatusAsStaff']);
 });
 
 // ============ ADMIN GİRİŞİ GEREKTİRİR ============

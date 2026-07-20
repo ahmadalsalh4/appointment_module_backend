@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Admin;
 use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\Staff;
@@ -11,12 +12,15 @@ use Carbon\Carbon;
 
 class AppointmentController extends Controller
 {
-    /**
-     * Login olmuş personel/admin'in rolüne göre randevuları döndürür
-     */
+
     public function index(Request $request)
     {
-        $query = Appointment::with(['staff.person', 'customer.person', 'service', 'status']);
+        $admin = $request->user();
+
+        $managedStaffIds = Staff::where('admin_id', $admin->id)->pluck('id');
+
+        $query = Appointment::with(['staff.person', 'customer.person', 'service', 'status'])
+            ->whereIn('staff_id', $managedStaffIds);
 
         if ($request->filled('status_id')) {
             $query->byStatus($request->status_id);
@@ -33,9 +37,7 @@ class AppointmentController extends Controller
         return response()->json($query->orderBy('start_date')->get());
     }
 
-    /**
-     * Login olmuş müşterinin sadece kendi randevularını döndürür
-     */
+
     public function myAppointments(Request $request)
     {
         $appointments = Appointment::where('customer_id', $request->user()->id)
@@ -46,12 +48,10 @@ class AppointmentController extends Controller
         return response()->json($appointments);
     }
 
-    /**
-     * STAFF: sadece kendi randevularını döner
-     */
+
     public function myStaffAppointments(Request $request)
     {
-        $staff = $request->user(); // auth:staff guard'ı sayesinde her zaman gerçek Staff instance
+        $staff = $request->user();
 
         $query = Appointment::where('staff_id', $staff->id)
             ->with(['customer.person', 'service', 'status']);
@@ -59,6 +59,7 @@ class AppointmentController extends Controller
         if ($request->filled('status_id')) {
             $query->byStatus($request->status_id);
         }
+
         if ($request->filled('date')) {
             $query->onDate($request->date);
         }
@@ -66,9 +67,27 @@ class AppointmentController extends Controller
         return response()->json($query->orderBy('start_date')->get());
     }
 
-    /**
-     * Yeni randevu oluşturma (müşteri kendi adına)
-     */
+
+    public function updateStatusAsStaff(Request $request, Appointment $appointment)
+    {
+        $staff = $request->user(); 
+
+        if ($appointment->staff_id !== $staff->id) {
+            return response()->json(['message' => 'Bu randevuyu güncelleme yetkiniz yok'], 403);
+        }
+
+        $validated = $request->validate([
+            'state_id' => 'required|exists:statuses,id',
+        ]);
+
+        $appointment->update([
+            'state_id' => $validated['state_id'],
+        ]);
+
+        return response()->json($appointment->load(['customer.person', 'service', 'status']));
+    }
+
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -98,12 +117,12 @@ class AppointmentController extends Controller
             'end_date' => $endDate,
         ]);
 
-        return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']), 201);
+        return response()->json(
+            $appointment->load(['staff.person', 'customer.person', 'service', 'status']),
+            201
+        );
     }
 
-    /**
-     * Tek randevu detayı (yetki kontrolüyle)
-     */
     public function show(Request $request, Appointment $appointment)
     {
         if (!$this->canAccess($request->user(), $appointment)) {
@@ -113,40 +132,25 @@ class AppointmentController extends Controller
         return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']));
     }
 
-    /**
-     * Randevu düzenleme (yetki kontrolüyle)
-     */
+
     public function update(Request $request, Appointment $appointment)
     {
-        // 1. Yetki kontrolü (Aynı kalsın)
         if (!$this->canAccess($request->user(), $appointment)) {
             return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
         }
 
-        // 2. SADECE state_id alanının güncellenmesine izin ver
         $validated = $request->validate([
-            'state_id' => 'required|exists:statuses,id', // Sadece durum değiştirilebilir
+            'state_id' => 'required|exists:statuses,id',
         ]);
 
-        // (Opsiyonel) İptal edilmiş veya tamamlanmış bir randevunun durumu tekrar değiştirilemesin isterseniz:
-        /*
-    if ($appointment->state_id == Status::CANCELLED || $appointment->state_id == Status::COMPLETED) {
-        return response()->json(['message' => 'Bu randevunun durumu artık değiştirilemez.'], 422);
-    }
-    */
-
-        // 3. Sadece state alanını güncelle
         $appointment->update([
             'state_id' => $validated['state_id'],
         ]);
 
-        // 4. Güncellenmiş randevuyu ilişkileriyle birlikte döndür
         return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']));
     }
 
-    /**
-     * Randevu iptali (müşteri, sadece kendi randevusu)
-     */
+
     public function cancel(Request $request, Appointment $appointment)
     {
         if ($appointment->customer_id !== $request->user()->id) {
@@ -161,9 +165,7 @@ class AppointmentController extends Controller
         ]);
     }
 
-    /**
-     * Randevu silme (personel/admin, yetki kontrolüyle)
-     */
+
     public function destroy(Request $request, Appointment $appointment)
     {
         if (!$this->canAccess($request->user(), $appointment)) {
@@ -175,18 +177,10 @@ class AppointmentController extends Controller
         return response()->json(['message' => 'Randevu silindi']);
     }
 
-    /**
-     * Yardımcı: login olmuş personel/admin bu randevuya erişebilir mi?
-     */
-    private function canAccess(Staff $loggedInStaff, Appointment $appointment): bool
+
+    private function canAccess(Admin $admin, Appointment $appointment): bool
     {
-        $adminProfile = $loggedInStaff->adminProfile;
-
-        if ($adminProfile) {
-            $managedStaffIds = Staff::where('admin_id', $adminProfile->id)->pluck('id');
-            return $managedStaffIds->contains($appointment->staff_id);
-        }
-
-        return $appointment->staff_id === $loggedInStaff->id;
+        $managedStaffIds = Staff::where('admin_id', $admin->id)->pluck('id');
+        return $managedStaffIds->contains($appointment->staff_id);
     }
 }

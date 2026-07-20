@@ -20,31 +20,24 @@ class StaffController extends Controller
             'name' => 'required|string|max:100',
             'surname' => 'required|string|max:100',
             'phone_number' => 'nullable|string|max:20',
-            'email' => 'required|email|unique:persons,email',
             'job_title' => 'required|string|max:100',
-            'job_email' => 'required|email|unique:staff,job_email',
+            'email' => 'required|email|unique:staff,email',   // ✅ staff'ın kendi email'i
             'password' => 'required|string|min:6',
-            // 'admin_id' artık validate içinde değildir, çünkü kullanıcıdan gelmeyecek!
         ]);
 
-        $staff = DB::transaction(function () use ($validated) {
-            // 1. Personel (kişi) bilgilerini oluştur
+        $staff = DB::transaction(function () use ($validated, $request) {
             $person = Person::create([
                 'name' => $validated['name'],
                 'surname' => $validated['surname'],
                 'phone_number' => $validated['phone_number'] ?? null,
-                'email' => $validated['email'],
             ]);
-
-            // Sisteme giriş yapan admin'in kendi ID'sini almak için:
-            $creatorAdminId = auth()->id();
 
             return Staff::create([
                 'person_id' => $person->id,
                 'job_title' => $validated['job_title'],
-                'job_email' => $validated['job_email'],
-                'password' => bcrypt($validated['password']),
-                'admin_id' => $creatorAdminId, // Login olan adminin ID'si
+                'email' => $validated['email'],
+                'password' => $validated['password'],
+                'admin_id' => $request->user()->id,   // ✅ route zaten auth:admin, bu her zaman doğru admin
             ]);
         });
 
@@ -53,8 +46,9 @@ class StaffController extends Controller
 
     public function show(Staff $staff_member)
     {
-        return response()->json($staff_member->load(['person', 'adminProfile']));
+        return response()->json($staff_member->load(['person', 'managingAdmin']));   // ✅ adminProfile → managingAdmin
     }
+
 
     public function update(Request $request, Staff $staff_member)
     {
