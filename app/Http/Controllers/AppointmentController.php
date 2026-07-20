@@ -47,6 +47,26 @@ class AppointmentController extends Controller
     }
 
     /**
+     * STAFF: sadece kendi randevularını döner
+     */
+    public function myStaffAppointments(Request $request)
+    {
+        $staff = $request->user(); // auth:staff guard'ı sayesinde her zaman gerçek Staff instance
+
+        $query = Appointment::where('staff_id', $staff->id)
+            ->with(['customer.person', 'service', 'status']);
+
+        if ($request->filled('status_id')) {
+            $query->byStatus($request->status_id);
+        }
+        if ($request->filled('date')) {
+            $query->onDate($request->date);
+        }
+
+        return response()->json($query->orderBy('start_date')->get());
+    }
+
+    /**
      * Yeni randevu oluşturma (müşteri kendi adına)
      */
     public function store(Request $request)

@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CustomerAuthController;
 use App\Http\Controllers\StaffAuthController;
+use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\StaffController;
@@ -17,6 +18,10 @@ Route::prefix('customer')->group(function () {
 
 Route::prefix('staff')->group(function () {
     Route::post('/login', [StaffAuthController::class, 'login']);
+});
+
+Route::prefix('admin')->group(function () {
+    Route::post('/login', [AdminAuthController::class, 'login']);
 });
 
 // ============ HERKESE AÇIK (login gerekmez) ============
@@ -34,9 +39,15 @@ Route::middleware('auth:customer')->group(function () {
     Route::get('/my-appointments', [AppointmentController::class, 'myAppointments']);
 });
 
-// ============ PERSONEL/ADMIN GİRİŞİ GEREKTİRİR ============
+// ============ PERSONEL GİRİŞİ GEREKTİRİR (sadece sıradan staff) ============
 Route::middleware('auth:staff')->group(function () {
     Route::post('/staff/logout', [StaffAuthController::class, 'logout']);
+    Route::get('/staff/appointments', [AppointmentController::class, 'myStaffAppointments']);
+});
+
+// ============ ADMIN GİRİŞİ GEREKTİRİR ============
+Route::middleware('auth:admin')->group(function () {
+    Route::post('/admin/logout', [AdminAuthController::class, 'logout']);
 
     Route::apiResource('categories', CategoryController::class)->except(['index', 'show']);
     Route::apiResource('services', ServiceController::class)->except(['index', 'show']);
