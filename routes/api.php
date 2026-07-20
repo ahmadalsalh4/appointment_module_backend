@@ -9,6 +9,8 @@ use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AvailabilityController;
+use App\Http\Controllers\CustomerProfileController;
+use App\Http\Controllers\StaffProfileController;
 
 // ============ AUTH (herkese açık) ============
 Route::prefix('customer')->group(function () {
@@ -37,18 +39,25 @@ Route::middleware('auth:customer')->group(function () {
     Route::post('/appointments', [AppointmentController::class, 'store']);
     Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
     Route::get('/my-appointments', [AppointmentController::class, 'myAppointments']);
+    Route::get('/my-appointments/{appointment}', [AppointmentController::class, 'myAppointmentDetail']); // ← YENİ
+
+    Route::get('/customer/profile', [CustomerProfileController::class, 'show']);           // ← YENİ
 });
 
 // ============ PERSONEL GİRİŞİ GEREKTİRİR (sadece sıradan staff) ============
 Route::middleware('auth:staff')->group(function () {
     Route::post('/staff/logout', [StaffAuthController::class, 'logout']);
     Route::get('/staff/appointments', [AppointmentController::class, 'myStaffAppointments']);
+    Route::get('/staff/appointments/{appointment}', [AppointmentController::class, 'myStaffAppointmentDetail']); // ← YENİ
     Route::patch('/staff/appointments/{appointment}/status', [AppointmentController::class, 'updateStatusAsStaff']);
+
+    Route::get('/staff/profile', [StaffProfileController::class, 'show']);           // ← YENİ
 });
 
 // ============ ADMIN GİRİŞİ GEREKTİRİR ============
 Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/logout', [AdminAuthController::class, 'logout']);
+    Route::get('/admin/profile', [CustomerProfileController::class, 'show']);
 
     Route::apiResource('categories', CategoryController::class)->except(['index', 'show']);
     Route::apiResource('services', ServiceController::class)->except(['index', 'show']);

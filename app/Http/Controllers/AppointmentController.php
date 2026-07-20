@@ -12,10 +12,13 @@ use Carbon\Carbon;
 
 class AppointmentController extends Controller
 {
-
+    /**
+     * ADMIN: sadece kendi yönettiği personellerin randevularını döner
+     * (route: auth:admin guard'ı altında)
+     */
     public function index(Request $request)
     {
-        $admin = $request->user();
+        $admin = $request->user(); // auth:admin guard'ı sayesinde her zaman gerçek Admin instance
 
         $managedStaffIds = Staff::where('admin_id', $admin->id)->pluck('id');
 
@@ -37,7 +40,9 @@ class AppointmentController extends Controller
         return response()->json($query->orderBy('start_date')->get());
     }
 
-
+    /**
+     * CUSTOMER: login olmuş müşterinin sadece kendi randevularını döndürür
+     */
     public function myAppointments(Request $request)
     {
         $appointments = Appointment::where('customer_id', $request->user()->id)
@@ -48,10 +53,13 @@ class AppointmentController extends Controller
         return response()->json($appointments);
     }
 
-
+    /**
+     * STAFF: sadece kendi randevularını döner
+     * (route: auth:staff guard'ı altında)
+     */
     public function myStaffAppointments(Request $request)
     {
-        $staff = $request->user();
+        $staff = $request->user(); // auth:staff guard'ı sayesinde her zaman gerçek Staff instance
 
         $query = Appointment::where('staff_id', $staff->id)
             ->with(['customer.person', 'service', 'status']);
@@ -67,10 +75,14 @@ class AppointmentController extends Controller
         return response()->json($query->orderBy('start_date')->get());
     }
 
-
+    /**
+     * STAFF: kendi randevusunun durumunu günceller (örn. "tamamlandı" olarak işaretleme)
+     * (route: auth:staff guard'ı altında — admin'in update()'inden ayrı,
+     *  çünkü personel sadece KENDİ randevusunu, admin ise ekibinin TÜMÜNÜ değiştirebilir)
+     */
     public function updateStatusAsStaff(Request $request, Appointment $appointment)
     {
-        $staff = $request->user(); 
+        $staff = $request->user(); // auth:staff guard'ı sayesinde her zaman gerçek Staff instance
 
         if ($appointment->staff_id !== $staff->id) {
             return response()->json(['message' => 'Bu randevuyu güncelleme yetkiniz yok'], 403);
@@ -87,7 +99,33 @@ class AppointmentController extends Controller
         return response()->json($appointment->load(['customer.person', 'service', 'status']));
     }
 
+    /**
+     * CUSTOMER: kendi randevusunun detayı (sadece kendi randevusuysa erişebilir)
+     */
+    public function myAppointmentDetail(Request $request, Appointment $appointment)
+    {
+        if ($appointment->customer_id !== $request->user()->id) {
+            return response()->json(['message' => 'Bu randevuyu görme yetkiniz yok'], 403);
+        }
 
+        return response()->json($appointment->load(['staff.person', 'service', 'status']));
+    }
+
+    /**
+     * STAFF: kendi randevusunun detayı (sadece kendi randevusuysa erişebilir)
+     */
+    public function myStaffAppointmentDetail(Request $request, Appointment $appointment)
+    {
+        if ($appointment->staff_id !== $request->user()->id) {
+            return response()->json(['message' => 'Bu randevuyu görme yetkiniz yok'], 403);
+        }
+
+        return response()->json($appointment->load(['customer.person', 'service', 'status']));
+    }
+
+    /**
+     * CUSTOMER: yeni randevu oluşturma (kendi adına)
+     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -123,6 +161,9 @@ class AppointmentController extends Controller
         );
     }
 
+    /**
+     * ADMIN: tek randevu detayı (yetki kontrolüyle)
+     */
     public function show(Request $request, Appointment $appointment)
     {
         if (!$this->canAccess($request->user(), $appointment)) {
@@ -132,7 +173,11 @@ class AppointmentController extends Controller
         return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']));
     }
 
-
+    /**
+     * ADMIN: randevu durumunu güncelleme (yetki kontrolüyle)
+     * Not: sadece state_id değiştirilebilir (onaylama/tamamlama gibi).
+     * Personel/müşteri/tarih değişikliği için ayrı bir "reschedule" akışı düşünülebilir.
+     */
     public function update(Request $request, Appointment $appointment)
     {
         if (!$this->canAccess($request->user(), $appointment)) {
@@ -150,7 +195,9 @@ class AppointmentController extends Controller
         return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']));
     }
 
-
+    /**
+     * CUSTOMER: randevu iptali (sadece kendi randevusu)
+     */
     public function cancel(Request $request, Appointment $appointment)
     {
         if ($appointment->customer_id !== $request->user()->id) {
@@ -165,7 +212,9 @@ class AppointmentController extends Controller
         ]);
     }
 
-
+    /**
+     * ADMIN: randevu silme (yetki kontrolüyle)
+     */
     public function destroy(Request $request, Appointment $appointment)
     {
         if (!$this->canAccess($request->user(), $appointment)) {
@@ -177,7 +226,11 @@ class AppointmentController extends Controller
         return response()->json(['message' => 'Randevu silindi']);
     }
 
-
+    /**
+     * Yardımcı: login olmuş Admin, bu randevuya erişebilir mi?
+     * (show/update/destroy sadece auth:admin altında olduğu için
+     *  $admin her zaman gerçek bir Admin instance'ıdır)
+     */
     private function canAccess(Admin $admin, Appointment $appointment): bool
     {
         $managedStaffIds = Staff::where('admin_id', $admin->id)->pluck('id');
