@@ -13,12 +13,11 @@ use Carbon\Carbon;
 class AppointmentController extends Controller
 {
     /**
-     * ADMIN: sadece kendi yönettiği personellerin randevularını döner
-     * (route: auth:admin guard'ı altında)
+     * ADMIN: Giriş yapmış adminin yönettiği personellere ait randevuları döndürür
      */
     public function index(Request $request)
     {
-        $admin = $request->user(); // auth:admin guard'ı sayesinde her zaman gerçek Admin instance
+        $admin = $request->user();
 
         $managedStaffIds = Staff::where('admin_id', $admin->id)->pluck('id');
 
@@ -41,25 +40,34 @@ class AppointmentController extends Controller
     }
 
     /**
-     * CUSTOMER: login olmuş müşterinin sadece kendi randevularını döndürür
+     * CUSTOMER: Login olmuş müşterinin sadece kendi randevularını döndürür
      */
     public function myAppointments(Request $request)
     {
-        $appointments = Appointment::where('customer_id', $request->user()->id)
-            ->with(['staff.person', 'service', 'status'])
-            ->orderBy('start_date', 'desc')
-            ->get();
+        $query = Appointment::where('customer_id', $request->user()->id)
+            ->with(['staff.person', 'service', 'status']);
 
-        return response()->json($appointments);
+        if ($request->filled('status_id')) {
+            $query->byStatus($request->status_id);
+        }
+
+        if ($request->filled('date')) {
+            $query->onDate($request->date);
+        }
+
+        // Müşteri kendi randevularında personel adıyla arama yapmak isterse:
+        // Eğer Appointment modelinde searchStaff gibi bir scope varsa eklenebilir.
+        // Şimdilik status ve date filtreleri eklendi.
+
+        return response()->json($query->orderBy('start_date', 'desc')->get());
     }
 
     /**
-     * STAFF: sadece kendi randevularını döner
-     * (route: auth:staff guard'ı altında)
+     * STAFF: Sadece kendi randevularını döner
      */
     public function myStaffAppointments(Request $request)
     {
-        $staff = $request->user(); // auth:staff guard'ı sayesinde her zaman gerçek Staff instance
+        $staff = $request->user();
 
         $query = Appointment::where('staff_id', $staff->id)
             ->with(['customer.person', 'service', 'status']);
@@ -70,6 +78,10 @@ class AppointmentController extends Controller
 
         if ($request->filled('date')) {
             $query->onDate($request->date);
+        }
+
+        if ($request->filled('customer_name')) {
+            $query->searchCustomer($request->customer_name);
         }
 
         return response()->json($query->orderBy('start_date')->get());

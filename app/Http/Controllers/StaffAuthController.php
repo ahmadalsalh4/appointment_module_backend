@@ -24,8 +24,8 @@ class StaffAuthController extends Controller
 
         return response()->json([
             'staff' => $staff->load(['person', 'managingAdmin']),
-            'token' => $token,
-            // is_admin kaldırıldı — admin artık ayrı bir login akışı (AdminAuthController)
+            'token' => $token,,
+            'role' => 'staff'
         ]);
     }
 

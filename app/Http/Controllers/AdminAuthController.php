@@ -30,6 +30,7 @@ class AdminAuthController extends Controller
         return response()->json([
             'admin' => $admin->load('person'),
             'token' => $token,
+            'role' => 'admin'
         ]);
     }
 
