@@ -24,7 +24,7 @@ class StaffAuthController extends Controller
 
         return response()->json([
             'staff' => $staff->load(['person', 'managingAdmin']),
-            'token' => $token,,
+            'token' => $token,
             'role' => 'staff'
         ]);
     }
