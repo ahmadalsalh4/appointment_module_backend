@@ -165,6 +165,12 @@ class AppointmentController extends Controller
         $startDate = Carbon::parse($validated['start_date']);
         $endDate = $startDate->copy()->addMinutes($service->duration);
 
+        if (!$this->isWithinWorkingHours($startDate, $endDate)) {
+            return response()->json([
+                'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
+            ], 422);
+        }
+
         $conflict = Appointment::conflicting($validated['staff_id'], $startDate, $endDate)->exists();
 
         if ($conflict) {
@@ -231,6 +237,10 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Bu randevuyu iptal etme yetkiniz yok'], 403);
         }
 
+        if (in_array($appointment->state_id, [Status::COMPLETED, Status::CANCELLED])) {
+            return response()->json(['message' => 'Tamamlanmış veya zaten iptal edilmiş randevular tekrar iptal edilemez.'], 422);
+        }
+
         $appointment->update(['state_id' => Status::CANCELLED]);
 
         return response()->json([
@@ -251,6 +261,29 @@ class AppointmentController extends Controller
         $appointment->delete();
 
         return response()->json(['message' => 'Randevu silindi']);
+    }
+
+    /**
+     * Yardımcı: Randevunun personelin çalışma saatleri içinde olup olmadığını kontrol eder
+     */
+    private function isWithinWorkingHours(Carbon $startDate, Carbon $endDate): bool
+    {
+        if ($startDate->toDateString() !== $endDate->toDateString()) {
+            return false;
+        }
+
+        $dateStr = $startDate->toDateString();
+
+        foreach (Staff::WORK_BLOCKS as $block) {
+            $blockStart = Carbon::parse("{$dateStr} {$block['start']}");
+            $blockEnd = Carbon::parse("{$dateStr} {$block['end']}");
+
+            if ($startDate->gte($blockStart) && $endDate->lte($blockEnd)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

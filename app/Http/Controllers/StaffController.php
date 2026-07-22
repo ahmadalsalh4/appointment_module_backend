@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\DB;
 
 class StaffController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Staff::with('person')->get());
+        return response()->json(Staff::where('admin_id', $request->user()->id)->with('person')->get());
     }
 
     public function store(Request $request)
@@ -44,26 +44,50 @@ class StaffController extends Controller
         return response()->json($staff->load('person'), 201);
     }
 
-    public function show(Staff $staff_member)
+    public function show(Request $request, Staff $staff_member)
     {
-        return response()->json($staff_member->load(['person', 'managingAdmin']));   // ✅ adminProfile → managingAdmin
-    }
+        if ($staff_member->admin_id !== $request->user()->id) {
+            return response()->json(['message' => 'Bu personeli görüntüleme yetkiniz yok'], 403);
+        }
 
+        return response()->json($staff_member->load(['person', 'managingAdmin']));
+    }
 
     public function update(Request $request, Staff $staff_member)
     {
+        if ($staff_member->admin_id !== $request->user()->id) {
+            return response()->json(['message' => 'Bu personeli güncelleme yetkiniz yok'], 403);
+        }
+
         $validated = $request->validate([
             'job_title' => 'sometimes|string|max:100',
             'email' => 'sometimes|email|unique:staff,email,' . $staff_member->id,
+            'name' => 'sometimes|string|max:100',
+            'surname' => 'sometimes|string|max:100',
+            'phone_number' => 'nullable|string|max:20',
         ]);
 
-        $staff_member->update($validated);
+        DB::transaction(function () use ($validated, $staff_member) {
+            $staffData = array_intersect_key($validated, array_flip(['job_title', 'email']));
+            if (!empty($staffData)) {
+                $staff_member->update($staffData);
+            }
 
-        return response()->json($staff_member);
+            $personData = array_intersect_key($validated, array_flip(['name', 'surname', 'phone_number']));
+            if (!empty($personData)) {
+                $staff_member->person->update($personData);
+            }
+        });
+
+        return response()->json($staff_member->load('person'));
     }
 
-    public function destroy(Staff $staff_member)
+    public function destroy(Request $request, Staff $staff_member)
     {
+        if ($staff_member->admin_id !== $request->user()->id) {
+            return response()->json(['message' => 'Bu personeli silme yetkiniz yok'], 403);
+        }
+
         $staff_member->delete();
         return response()->json(['message' => 'Personel silindi']);
     }

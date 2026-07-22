@@ -40,25 +40,28 @@ Route::middleware('auth:customer')->group(function () {
     Route::post('/appointments', [AppointmentController::class, 'store']);
     Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
     Route::get('/my-appointments', [AppointmentController::class, 'myAppointments']);
-    Route::get('/my-appointments/{appointment}', [AppointmentController::class, 'myAppointmentDetail']); // ← YENİ
+    Route::get('/my-appointments/{appointment}', [AppointmentController::class, 'myAppointmentDetail']);
 
-    Route::get('/customer/profile', [CustomerProfileController::class, 'show']);           // ← YENİ
+    Route::get('/customer/profile', [CustomerProfileController::class, 'show']);
+    Route::put('/customer/profile', [CustomerProfileController::class, 'update']);
 });
 
 // ============ PERSONEL GİRİŞİ GEREKTİRİR (sadece sıradan staff) ============
 Route::middleware('auth:staff')->group(function () {
     Route::post('/staff/logout', [StaffAuthController::class, 'logout']);
     Route::get('/staff/appointments', [AppointmentController::class, 'myStaffAppointments']);
-    Route::get('/staff/appointments/{appointment}', [AppointmentController::class, 'myStaffAppointmentDetail']); // ← YENİ
+    Route::get('/staff/appointments/{appointment}', [AppointmentController::class, 'myStaffAppointmentDetail']);
     Route::patch('/staff/appointments/{appointment}/status', [AppointmentController::class, 'updateStatusAsStaff']);
 
-    Route::get('/staff/profile', [StaffProfileController::class, 'show']);           // ← YENİ
+    Route::get('/staff/profile', [StaffProfileController::class, 'show']);
+    Route::put('/staff/profile', [StaffProfileController::class, 'update']);
 });
 
 // ============ ADMIN GİRİŞİ GEREKTİRİR ============
 Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/logout', [AdminAuthController::class, 'logout']);
     Route::get('/admin/profile', [AdminProfileController::class, 'show']);
+    Route::put('/admin/profile', [AdminProfileController::class, 'update']);
 
     Route::apiResource('categories', CategoryController::class)->except(['index', 'show']);
     Route::apiResource('services', ServiceController::class)->except(['index', 'show']);
