@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Appointment;
 use App\Models\Service;
+use App\Models\Staff;
 use Illuminate\Http\Request;
 
 class ServiceController extends Controller
@@ -54,5 +56,16 @@ class ServiceController extends Controller
         $service->delete();
 
         return response()->json(['message' => 'Hizmet silindi']);
+    }
+    public function getAvailableStaff(Service $service)
+    {
+        // Assuming you have a many-to-many relationship set up:
+        // return $service->staff()->get();
+
+        // If you don't have a direct relationship, you can get staff who have appointments for this service:
+        $staffIds = Appointment::where('service_id', $service->id)->pluck('staff_id')->unique();
+        $staff = Staff::whereIn('id', $staffIds)->with('person')->get();
+
+        return response()->json($staff);
     }
 }
