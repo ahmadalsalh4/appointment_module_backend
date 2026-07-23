@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Category;
 use App\Models\Staff;
 use App\Models\Person;
 use Illuminate\Http\Request;
@@ -95,5 +96,14 @@ class StaffController extends Controller
 
         $staff_member->delete();
         return response()->json(['message' => 'Personel silindi']);
+    }
+
+    public function byCategory(Category $category)
+    {
+        $staff = Staff::where('catagory_id', $category->id)
+            ->with('person')
+            ->get();
+
+        return response()->json($staff);
     }
 }

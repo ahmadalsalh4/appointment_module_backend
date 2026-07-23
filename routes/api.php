@@ -34,6 +34,7 @@ Route::get('/services', [ServiceController::class, 'index']);
 Route::get('/services/{service}', [ServiceController::class, 'show']);
 Route::get('/availability', [AvailabilityController::class, 'check']);
 Route::get('/services/{service}/staff', [ServiceController::class, 'getAvailableStaff']);
+Route::get('/categories/{category}/staff', [StaffController::class, 'byCategory']);
 
 // ============ MÜŞTERİ GİRİŞİ GEREKTİRİR ============
 Route::middleware('auth:customer')->group(function () {
