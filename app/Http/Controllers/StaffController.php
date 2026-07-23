@@ -11,7 +11,9 @@ class StaffController extends Controller
 {
     public function index(Request $request)
     {
-        return response()->json(Staff::where('admin_id', $request->user()->id)->with('person')->get());
+        return response()->json(
+            Staff::where('admin_id', $request->user()->id)->with(['person', 'category'])->get()
+        );
     }
 
     public function store(Request $request)
@@ -21,8 +23,9 @@ class StaffController extends Controller
             'surname' => 'required|string|max:100',
             'phone_number' => 'nullable|string|max:20',
             'job_title' => 'required|string|max:100',
-            'email' => 'required|email|unique:staff,email',   // ✅ staff'ın kendi email'i
+            'email' => 'required|email|unique:staff,email',
             'password' => 'required|string|min:6',
+            'catagory_id' => 'nullable|exists:catagorys,id',
         ]);
 
         $staff = DB::transaction(function () use ($validated, $request) {
@@ -37,11 +40,12 @@ class StaffController extends Controller
                 'job_title' => $validated['job_title'],
                 'email' => $validated['email'],
                 'password' => $validated['password'],
-                'admin_id' => $request->user()->id,   // ✅ route zaten auth:admin, bu her zaman doğru admin
+                'admin_id' => $request->user()->id,
+                'catagory_id' => $validated['catagory_id'] ?? null,
             ]);
         });
 
-        return response()->json($staff->load('person'), 201);
+        return response()->json($staff->load(['person', 'category']), 201);
     }
 
     public function show(Request $request, Staff $staff_member)
@@ -50,7 +54,7 @@ class StaffController extends Controller
             return response()->json(['message' => 'Bu personeli görüntüleme yetkiniz yok'], 403);
         }
 
-        return response()->json($staff_member->load(['person', 'managingAdmin']));
+        return response()->json($staff_member->load(['person', 'managingAdmin', 'category']));
     }
 
     public function update(Request $request, Staff $staff_member)
@@ -65,10 +69,11 @@ class StaffController extends Controller
             'name' => 'sometimes|string|max:100',
             'surname' => 'sometimes|string|max:100',
             'phone_number' => 'nullable|string|max:20',
+            'catagory_id' => 'nullable|exists:catagorys,id',
         ]);
 
         DB::transaction(function () use ($validated, $staff_member) {
-            $staffData = array_intersect_key($validated, array_flip(['job_title', 'email']));
+            $staffData = array_intersect_key($validated, array_flip(['job_title', 'email', 'catagory_id']));
             if (!empty($staffData)) {
                 $staff_member->update($staffData);
             }
@@ -79,7 +84,7 @@ class StaffController extends Controller
             }
         });
 
-        return response()->json($staff_member->load('person'));
+        return response()->json($staff_member->load(['person', 'category']));
     }
 
     public function destroy(Request $request, Staff $staff_member)

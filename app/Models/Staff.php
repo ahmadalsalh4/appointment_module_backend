@@ -12,7 +12,7 @@ class Staff extends Authenticatable
 
     protected $table = 'staff';
 
-    protected $fillable = ['person_id', 'job_title', 'email', 'password', 'admin_id'];
+    protected $fillable = ['person_id', 'job_title', 'email', 'password', 'admin_id', 'catagory_id'];
 
     protected $hidden = ['password'];
 
@@ -42,5 +42,10 @@ class Staff extends Authenticatable
     public function managingAdmin()
     {
         return $this->belongsTo(Admin::class, 'admin_id');
+    }
+    
+    public function category()
+    {
+        return $this->belongsTo(Category::class, 'catagory_id');
     }
 }

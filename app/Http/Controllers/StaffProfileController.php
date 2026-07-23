@@ -12,7 +12,7 @@ class StaffProfileController extends Controller
     {
         $staff = $request->user();
 
-        return response()->json($staff->load(['person', 'managingAdmin.person']));
+        return response()->json($staff->load(['person', 'managingAdmin.person', 'category']));
     }
 
     public function update(Request $request)
@@ -23,13 +23,14 @@ class StaffProfileController extends Controller
             'email' => ['sometimes', 'email', Rule::unique('staff', 'email')->ignore($staff->id)],
             'password' => ['sometimes', 'string', 'min:6'],
             'job_title' => ['sometimes', 'string', 'max:100'],
+            'catagory_id' => ['nullable', 'exists:catagorys,id'],
             'name' => ['sometimes', 'string', 'max:100'],
             'surname' => ['sometimes', 'string', 'max:100'],
             'phone_number' => ['nullable', 'string', 'max:20'],
         ]);
 
         DB::transaction(function () use ($validated, $staff) {
-            $staffData = array_intersect_key($validated, array_flip(['email', 'password', 'job_title']));
+            $staffData = array_intersect_key($validated, array_flip(['email', 'password', 'job_title', 'catagory_id']));
             if (!empty($staffData)) {
                 $staff->update($staffData);
             }
@@ -40,6 +41,6 @@ class StaffProfileController extends Controller
             }
         });
 
-        return response()->json($staff->load(['person', 'managingAdmin.person']));
+        return response()->json($staff->load(['person', 'managingAdmin.person', 'category']));
     }
 }
