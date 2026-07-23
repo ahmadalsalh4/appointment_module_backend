@@ -33,13 +33,14 @@ class BackendFixesTest extends TestCase
         $personAdmin = Person::create(['name' => 'Admin', 'surname' => 'One', 'phone_number' => '111']);
         $admin = Admin::create(['person_id' => $personAdmin->id, 'email' => 'admin@test.com', 'password' => 'password']);
 
+        $category = Category::create(['name' => 'Haircuts']);
+
         $personStaff = Person::create(['name' => 'Staff', 'surname' => 'One', 'phone_number' => '222']);
-        $staff = Staff::create(['person_id' => $personStaff->id, 'admin_id' => $admin->id, 'job_title' => 'Barber', 'email' => 'staff@test.com', 'password' => 'password']);
+        $staff = Staff::create(['person_id' => $personStaff->id, 'admin_id' => $admin->id, 'job_title' => 'Barber', 'catagory_id' => $category->id, 'email' => 'staff@test.com', 'password' => 'password']);
 
         $personCustomer = Person::create(['name' => 'Customer', 'surname' => 'One', 'phone_number' => '333']);
         $customer = Customer::create(['person_id' => $personCustomer->id, 'email' => 'customer@test.com', 'password' => 'password']);
 
-        $category = Category::create(['name' => 'Haircuts']);
         $service = Service::create(['catagory_id' => $category->id, 'name' => 'Standard Cut', 'duration' => 30]);
 
         // Attempt 03:00 AM booking (outside working hours)
@@ -59,13 +60,14 @@ class BackendFixesTest extends TestCase
         $personAdmin = Person::create(['name' => 'Admin', 'surname' => 'One', 'phone_number' => '111']);
         $admin = Admin::create(['person_id' => $personAdmin->id, 'email' => 'admin@test.com', 'password' => 'password']);
 
+        $category = Category::create(['name' => 'Haircuts']);
+
         $personStaff = Person::create(['name' => 'Staff', 'surname' => 'One', 'phone_number' => '222']);
-        $staff = Staff::create(['person_id' => $personStaff->id, 'admin_id' => $admin->id, 'job_title' => 'Barber', 'email' => 'staff@test.com', 'password' => 'password']);
+        $staff = Staff::create(['person_id' => $personStaff->id, 'admin_id' => $admin->id, 'job_title' => 'Barber', 'catagory_id' => $category->id, 'email' => 'staff@test.com', 'password' => 'password']);
 
         $personCustomer = Person::create(['name' => 'Customer', 'surname' => 'One', 'phone_number' => '333']);
         $customer = Customer::create(['person_id' => $personCustomer->id, 'email' => 'customer@test.com', 'password' => 'password']);
 
-        $category = Category::create(['name' => 'Haircuts']);
         $service = Service::create(['catagory_id' => $category->id, 'name' => 'Long Hair Cut', 'duration' => 45]);
 
         // 11:45 AM start with 45 min duration ends at 12:30 PM (spans lunch break 12:00-13:00)
@@ -84,13 +86,14 @@ class BackendFixesTest extends TestCase
         $personAdmin = Person::create(['name' => 'Admin', 'surname' => 'One', 'phone_number' => '111']);
         $admin = Admin::create(['person_id' => $personAdmin->id, 'email' => 'admin@test.com', 'password' => 'password']);
 
+        $category = Category::create(['name' => 'Haircuts']);
+
         $personStaff = Person::create(['name' => 'Staff', 'surname' => 'One', 'phone_number' => '222']);
-        $staff = Staff::create(['person_id' => $personStaff->id, 'admin_id' => $admin->id, 'job_title' => 'Barber', 'email' => 'staff@test.com', 'password' => 'password']);
+        $staff = Staff::create(['person_id' => $personStaff->id, 'admin_id' => $admin->id, 'job_title' => 'Barber', 'catagory_id' => $category->id, 'email' => 'staff@test.com', 'password' => 'password']);
 
         $personCustomer = Person::create(['name' => 'Customer', 'surname' => 'One', 'phone_number' => '333']);
         $customer = Customer::create(['person_id' => $personCustomer->id, 'email' => 'customer@test.com', 'password' => 'password']);
 
-        $category = Category::create(['name' => 'Haircuts']);
         $service = Service::create(['catagory_id' => $category->id, 'name' => 'Quick Cut', 'duration' => 30]);
 
         $nextDate = now()->addDays(2)->format('Y-m-d');
@@ -143,9 +146,9 @@ class BackendFixesTest extends TestCase
     public function test_cancellation_of_completed_appointment_fails()
     {
         $admin = Admin::create(['person_id' => Person::create(['name' => 'A1', 'surname' => 'S1'])->id, 'email' => 'a1@test.com', 'password' => 'password']);
-        $staff = Staff::create(['person_id' => Person::create(['name' => 'St1', 'surname' => 'Su1'])->id, 'admin_id' => $admin->id, 'job_title' => 'Doctor', 'email' => 'st1@test.com', 'password' => 'password']);
-        $customer = Customer::create(['person_id' => Person::create(['name' => 'C1', 'surname' => 'Cu1'])->id, 'email' => 'c1@test.com', 'password' => 'password']);
         $category = Category::create(['name' => 'Cat1']);
+        $staff = Staff::create(['person_id' => Person::create(['name' => 'St1', 'surname' => 'Su1'])->id, 'admin_id' => $admin->id, 'job_title' => 'Doctor', 'catagory_id' => $category->id, 'email' => 'st1@test.com', 'password' => 'password']);
+        $customer = Customer::create(['person_id' => Person::create(['name' => 'C1', 'surname' => 'Cu1'])->id, 'email' => 'c1@test.com', 'password' => 'password']);
         $service = Service::create(['catagory_id' => $category->id, 'name' => 'S1', 'duration' => 30]);
 
         $appointment = Appointment::create([

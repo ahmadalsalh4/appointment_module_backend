@@ -59,7 +59,7 @@ class AppointmentController extends Controller
         // Eğer Appointment modelinde searchStaff gibi bir scope varsa eklenebilir.
         // Şimdilik status ve date filtreleri eklendi.
 
-        return response()->json($query->orderBy('start_date', 'desc')->get());
+        return response()->json($query->orderBy('start_date')->get());
     }
 
     /**
@@ -101,7 +101,7 @@ class AppointmentController extends Controller
         }
 
         $validated = $request->validate([
-            'state_id' => 'required|exists:statuses,id',
+            'state_id' => 'required|in:' . Status::CONFIRMED . ',' . Status::COMPLETED,
         ]);
 
         $appointment->update([
@@ -162,6 +162,14 @@ class AppointmentController extends Controller
         ]);
 
         $service = Service::findOrFail($validated['service_id']);
+        $staff = Staff::findOrFail($validated['staff_id']);
+
+        if ($staff->catagory_id !== $service->catagory_id) {
+            return response()->json([
+                'message' => 'Bu personel seçilen hizmeti sunmamaktadır.',
+            ], 422);
+        }
+
         $startDate = Carbon::parse($validated['start_date']);
         $endDate = $startDate->copy()->addMinutes($service->duration);
 
