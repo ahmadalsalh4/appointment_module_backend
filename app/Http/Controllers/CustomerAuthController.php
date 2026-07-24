@@ -17,8 +17,8 @@ class CustomerAuthController extends Controller
             'name' => 'required|string|max:100',
             'surname' => 'required|string|max:100',
             'phone_number' => 'nullable|string|max:20',
-            'email' => 'required|email|unique:customers,email',   // ✅ customers tablosuna göre
-            'password' => 'required|string|min:6',
+            'email' => 'required|email|unique:customers,email',
+            'password' => 'required|string|min:6|confirmed',
         ]);
 
         $customer = DB::transaction(function () use ($validated) {

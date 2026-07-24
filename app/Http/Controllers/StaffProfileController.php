@@ -23,7 +23,7 @@ class StaffProfileController extends Controller
             'email' => ['sometimes', 'email', Rule::unique('staff', 'email')->ignore($staff->id)],
             'password' => ['sometimes', 'string', 'min:6'],
             'job_title' => ['sometimes', 'string', 'max:100'],
-            'catagory_id' => ['nullable', 'exists:catagorys,id'],
+            'catagory_id' => ['nullable', 'exists:categories,id'],
             'name' => ['sometimes', 'string', 'max:100'],
             'surname' => ['sometimes', 'string', 'max:100'],
             'phone_number' => ['nullable', 'string', 'max:20'],

@@ -15,7 +15,7 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->string('password');
             $table->foreignId('admin_id')->nullable()->constrained('admin')->onDelete('set null');
-            $table->foreignId('catagory_id')->nullable()->constrained('catagorys')->onDelete('set null');
+            $table->foreignId('catagory_id')->nullable()->constrained('categories')->onDelete('set null');
             $table->timestamps();
         });
     }

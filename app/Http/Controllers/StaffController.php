@@ -26,7 +26,7 @@ class StaffController extends Controller
             'job_title' => 'required|string|max:100',
             'email' => 'required|email|unique:staff,email',
             'password' => 'required|string|min:6',
-            'catagory_id' => 'nullable|exists:catagorys,id',
+            'catagory_id' => 'nullable|exists:categories,id',
         ]);
 
         $staff = DB::transaction(function () use ($validated, $request) {
@@ -70,7 +70,7 @@ class StaffController extends Controller
             'name' => 'sometimes|string|max:100',
             'surname' => 'sometimes|string|max:100',
             'phone_number' => 'nullable|string|max:20',
-            'catagory_id' => 'nullable|exists:catagorys,id',
+            'catagory_id' => 'nullable|exists:categories,id',
         ]);
 
         DB::transaction(function () use ($validated, $staff_member) {

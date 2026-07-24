@@ -22,7 +22,7 @@ class ServiceController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'catagory_id' => 'required|exists:catagorys,id',
+            'catagory_id' => 'required|exists:categories,id',
             'name' => 'required|string|max:100',
             'duration' => 'required|integer|min:5|max:480',
         ]);
@@ -40,7 +40,7 @@ class ServiceController extends Controller
     public function update(Request $request, Service $service)
     {
         $validated = $request->validate([
-            'catagory_id' => 'sometimes|exists:catagorys,id',
+            'catagory_id' => 'sometimes|exists:categories,id',
             'name' => 'sometimes|string|max:100',
             'duration' => 'sometimes|integer|min:5|max:480',
         ]);
