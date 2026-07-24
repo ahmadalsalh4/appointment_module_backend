@@ -55,13 +55,13 @@ class AppointmentController extends Controller
             $query->byStatus($request->status_id);
         }
 
+        if ($request->filled('staff_id')) {
+            $query->forStaff($request->staff_id);
+        }
+
         if ($request->filled('date')) {
             $query->onDate($request->date);
         }
-
-        // Müşteri kendi randevularında personel adıyla arama yapmak isterse:
-        // Eğer Appointment modelinde searchStaff gibi bir scope varsa eklenebilir.
-        // Şimdilik status ve date filtreleri eklendi.
 
         return response()->json($query->orderBy('start_date')->get());
     }

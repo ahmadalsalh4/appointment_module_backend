@@ -21,6 +21,8 @@ Kullanıcıların randevularını görüntüleyebildiği ve yönetebildiği rand
 - Randevu listeleme; **durum**, **personel** ve **tarih** filtreleme
 - **Müşteri adına** göre arama
 - **Müsaitlik** kontrolü ile daha önce rezerve edilmiş / uygun olmayan saatlerin seçilememesi
+- Personel çalışma saatleri kontrolü (09:00-12:00, 13:00-17:00, öğle arası kapalı)
+- Şifre doğrulama (`password_confirmation` zorunlu)
 - Mobil, tablet ve masaüstü cihazlara uyumlu JSON çıktıları
 
 ## Gereksinimler
@@ -47,9 +49,22 @@ touch database/database.sqlite
 # 4. Migrasyonları çalıştır
 php artisan migrate
 
-# 5. (İsteğe bağlı) JS bağımlılıkları ve varlıklar
+# 5. Örnek verileri yükle (kategoriler, hizmetler, personeller, müşteriler, randevular)
+php artisan db:seed
+
+# 6. (İsteğe bağlı) JS bağımlılıkları ve varlıklar
 npm install
 npm run build
+```
+
+Veya sıfırdan tam kurulum:
+
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+touch database/database.sqlite
+php artisan migrate:fresh --seed
 ```
 
 ## Çalıştırma
@@ -65,7 +80,22 @@ php artisan pail             # log izleyici
 npm run dev                  # vite
 ```
 
-API taban URL'si: `http://localhost:8000/api`
+API taban URL'si: `http://localhost:8000/api` (Laravel Valet/Herd kullanıyorsanız `http://appointment_module_backend.test/api`)
+
+## Test Hesapları (seed sonrası)
+
+| Rol | E-posta | Şifre | Kategori |
+| --- | --- | --- | --- |
+| Admin | `admin@test.com` | `admin123` | — |
+| Personel | `selin@test.com` | `staff123` | Eğitim (Matematik Öğretmeni) |
+| Personel | `murat@test.com` | `staff123` | Eğitim (İngilizce Eğitmeni) |
+| Personel | `ahmet@test.com` | `staff123` | Yazılım (Yazılım Geliştirici) |
+| Personel | `burcu@test.com` | `staff123` | Yazılım (UI/UX Tasarımcısı) |
+| Personel | `huseyin@test.com` | `staff123` | Temizlik (Temizlik Uzmanı) |
+| Personel | `sevgi@test.com` | `staff123` | Temizlik (Ev Temizlik Personeli) |
+| Müşteri | `ahmad@test.com` | `customer123` | — |
+| Müşteri | `elif@test.com` | `customer123` | — |
+| Müşteri | `burak@test.com` | `customer123` | — |
 
 ## API Uç Noktaları Özeti
 
@@ -75,22 +105,22 @@ Tüm kimlik doğrulama gerektiren uç noktalar `Authorization: Bearer <token>` b
 
 | Method | Endpoint               | Açıklama                  |
 | ------ | ---------------------- | ------------------------- |
-| POST   | `/customer/register`   | Yeni müşteri kaydı        |
+| POST   | `/customer/register`   | Yeni müşteri kaydı (şifre doğrulama zorunlu) |
 | POST   | `/customer/login`      | Müşteri girişi            |
 | POST   | `/staff/login`         | Personel girişi           |
 | POST   | `/admin/login`         | Admin girişi              |
 
 ### Herkese Açık — Katalog & Müsaitlik
 
-| Method | Endpoint                          | Açıklama                              |
-| ------ | --------------------------------- | ------------------------------------- |
-| GET    | `/categories`                     | Kategorileri listele                  |
-| GET    | `/categories/{category}`          | Kategori detayı                       |
-| GET    | `/services`                       | Hizmetleri listele                    |
-| GET    | `/services/{service}`             | Hizmet detayı                         |
-| GET    | `/services/{service}/staff`       | Hizmete uygun personelleri listele    |
-| GET    | `/categories/{category}/staff`    | Kategorideki personelleri listele     |
-| GET    | `/availability`                   | Tarih/saat müsaitlik kontrolü         |
+| Method | Endpoint                              | Açıklama                              |
+| ------ | ------------------------------------- | ------------------------------------- |
+| GET    | `/categories`                         | Kategorileri listele                  |
+| GET    | `/categories/{category}`              | Kategori detayı                       |
+| GET    | `/services`                           | Hizmetleri listele                    |
+| GET    | `/services/{service}`                 | Hizmet detayı                         |
+| GET    | `/services/{service}/staff`           | Hizmete uygun personelleri listele    |
+| GET    | `/categories/{category}/staff`        | Kategorideki personelleri listele     |
+| GET    | `/availability`                       | Tarih/saat müsaitlik kontrolü         |
 
 ### Müşteri (`auth:customer`)
 
@@ -132,19 +162,21 @@ Tüm kimlik doğrulama gerektiren uç noktalar `Authorization: Bearer <token>` b
 
 ## Filtreleme & Arama (Randevu Listesi)
 
-Admin tarafında `GET /appointments` uç noktası aşağıdaki sorgu parametrelerini destekler:
+Admin (`GET /appointments`), müşteri (`GET /my-appointments`) ve personel (`GET /staff/appointments`) uç noktaları aşağıdaki sorgu parametrelerini destekler:
 
-| Parametre        | Açıklama                            |
-| ---------------- | ----------------------------------- |
-| `status_id`      | Randevu durumuna göre filtrele      |
-| `staff_id`       | Personele göre filtrele             |
-| `date`           | Tarihe göre filtrele                |
-| `customer_name`  | Müşteri adına göre arama            |
+| Parametre        | Açıklama                            | Admin | Müşteri | Personel |
+| ---------------- | ----------------------------------- | :---: | :-----: | :------: |
+| `status_id`      | Randevu durumuna göre filtrele      | ✅ | ✅ | ✅ |
+| `staff_id`       | Personele göre filtrele             | ✅ | ✅ | — |
+| `date`           | Tarihe göre filtrele                | ✅ | ✅ | ✅ |
+| `customer_name`  | Müşteri adına göre arama            | ✅ | — | ✅ |
 
-Örnek:
+Örnekler:
 
 ```
 GET /api/appointments?status_id=1&staff_id=3&date=2026-07-24&customer_name=ahmet
+GET /api/my-appointments?status_id=2&staff_id=2&date=2026-07-25
+GET /api/staff/appointments?status_id=1&customer_name=elif
 ```
 
 ## Proje Yapısı
@@ -152,16 +184,42 @@ GET /api/appointments?status_id=1&staff_id=3&date=2026-07-24&customer_name=ahmet
 ```
 app/
 ├── Http/Controllers/      # API controller'ları
-└── Models/                # Eloquent modelleri (Admin, Staff, Customer, Appointment, Category, Service, ...)
+│   ├── AdminAuthController.php
+│   ├── AdminProfileController.php
+│   ├── AppointmentController.php
+│   ├── AvailabilityController.php
+│   ├── CategoryController.php
+│   ├── CustomerAuthController.php
+│   ├── CustomerProfileController.php
+│   ├── ServiceController.php
+│   ├── StaffAuthController.php
+│   ├── StaffController.php
+│   └── StaffProfileController.php
+└── Models/                # Eloquent modelleri (Admin, Staff, Customer, Appointment, Category, Service, Person, Status, User)
 database/
-├── migrations/
-└── seeders/
+├── migrations/            # 12 migrasyon (categories, appointments, …)
+└── seeders/               # 7 seeder
 routes/
 ├── api.php                # API rotaları (ana giriş noktası)
 ├── web.php
 └── console.php
 config/
 ```
+
+### Veritabanı Tabloları
+
+| Tablo | Açıklama |
+| --- | --- |
+| `persons` | Tüm kullanıcıların ortak kişisel bilgileri |
+| `admin` | Admin hesapları |
+| `staff` | Personel hesapları |
+| `customers` | Müşteri hesapları |
+| `categories` | Hizmet kategorileri (Eğitim, Yazılım, Temizlik) |
+| `services` | Hizmetler (kategorilere bağlı) |
+| `statuses` | Randevu durumları (pending, confirmed, completed, cancelled) |
+| `appointments` | Randevular |
+
+> **Not:** `catagorys` ve `appointmets` typo'ları düzeltildi — artık `categories` ve `appointments`. Ancak `catagory_id` kolon adı (FK) mevcut veriyle uyumluluk için olduğu gibi bırakıldı.
 
 ## Testler
 
@@ -171,7 +229,14 @@ composer test
 php artisan test
 ```
 
-Testler **Pest** ile yazılmıştır.
+Testler **Pest** ile yazılmıştır. Mevcut testler:
+
+- Çalışma saatleri dışında randevu almayı reddetme
+- Öğle arasını kapsayan randevuyu reddetme
+- Çalışma saatleri içinde randevu oluşturma
+- Admin'ler arası personel izolasyonu
+- Profil güncelleme uç noktaları
+- Tamamlanmış randevuyu iptal etmeyi reddetme
 
 ## Lisans
 
