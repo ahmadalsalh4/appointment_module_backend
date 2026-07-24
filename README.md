@@ -134,17 +134,17 @@ Tüm kimlik doğrulama gerektiren uç noktalar `Authorization: Bearer <token>` b
 
 Admin tarafında `GET /appointments` uç noktası aşağıdaki sorgu parametrelerini destekler:
 
-| Parametre     | Açıklama                            |
-| ------------- | ----------------------------------- |
-| `status`      | Randevu durumuna göre filtrele      |
-| `staff_id`    | Personele göre filtrele             |
-| `date`        | Tarihe göre filtrele                |
-| `search`      | Müşteri adına göre arama            |
+| Parametre        | Açıklama                            |
+| ---------------- | ----------------------------------- |
+| `status_id`      | Randevu durumuna göre filtrele      |
+| `staff_id`       | Personele göre filtrele             |
+| `date`           | Tarihe göre filtrele                |
+| `customer_name`  | Müşteri adına göre arama            |
 
 Örnek:
 
 ```
-GET /api/appointments?status=pending&staff_id=3&date=2026-07-24&search=ahmet
+GET /api/appointments?status_id=1&staff_id=3&date=2026-07-24&customer_name=ahmet
 ```
 
 ## Proje Yapısı

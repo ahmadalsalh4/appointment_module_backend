@@ -32,6 +32,10 @@ class AppointmentController extends Controller
             $query->onDate($request->date);
         }
 
+        if ($request->filled('staff_id')) {
+            $query->forStaff($request->staff_id);
+        }
+
         if ($request->filled('customer_name')) {
             $query->searchCustomer($request->customer_name);
         }
