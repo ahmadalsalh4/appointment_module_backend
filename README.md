@@ -1,157 +1,178 @@
-# Appointment Module — Backend
+# Randevu Yönetim Modülü — Backend (API)
 
-REST API for an appointment booking platform. Built with **Laravel 13** and uses **Laravel Sanctum** with multiple guards (`customer`, `staff`, `admin`) for role-based authentication.
+Kullanıcıların randevularını görüntüleyebildiği ve yönetebildiği randevu yönetim modülünün **backend** tarafıdır. **Laravel 13** ile geliştirilmiş, çoklu guard (müşteri / personel / admin) yapısına sahip bir REST API sunar.
 
-## Tech Stack
+> Frontend: [`appointment-module-frontend`](../appointment-module-frontend) (React 19 + Vite + TypeScript + Tailwind CSS)
 
-- PHP 8.3+
-- Laravel 13
-- Laravel Sanctum (token auth)
-- SQLite (default) / MySQL / PostgreSQL
-- Vite + Tailwind CSS (for the built-in front-end assets)
+## Kullanılan Teknolojiler
 
-## Features
+- **PHP 8.3+**
+- **Laravel 13**
+- **Laravel Sanctum** — token tabanlı kimlik doğrulama
+- **SQLite** (varsayılan) / MySQL / PostgreSQL
+- **Pest** — test
+- **Vite + Tailwind CSS** — Laravel ile gelen varlıklar için
 
-- **Three user roles** with separate authentication guards
-  - `customer` — register, login, book & cancel appointments, manage profile
-  - `staff` — login, view & update assigned appointments, manage profile
-  - `admin` — login, full CRUD on categories / services / staff, manage all appointments
-- Browse categories, services and staff availability (public endpoints)
-- Book appointments with availability checks
-- Manage appointment status (staff) and lifecycle (admin)
+## Modül Kapsamı (API Tarafı)
 
-## Requirements
+- Üç ayrı rol için kimlik doğrulama: `customer`, `staff`, `admin`
+- Hizmet, kategori ve personel yönetimi (admin)
+- **Randevu** oluşturma, düzenleme, iptal etme
+- Randevu listeleme; **durum**, **personel** ve **tarih** filtreleme
+- **Müşteri adına** göre arama
+- **Müsaitlik** kontrolü ile daha önce rezerve edilmiş / uygun olmayan saatlerin seçilememesi
+- Mobil, tablet ve masaüstü cihazlara uyumlu JSON çıktıları
 
-- PHP **8.3** or higher
+## Gereksinimler
+
+- PHP **8.3** veya üzeri
 - Composer
 - Node.js & npm
-- SQLite (default) or any other supported DB
+- SQLite (varsayılan) veya desteklenen başka bir veritabanı
 
-## Installation
+## Kurulum
 
 ```bash
-# 1. Install PHP dependencies
+# 1. PHP bağımlılıklarını yükle
 composer install
 
-# 2. Copy environment file and generate app key
+# 2. Ortam dosyasını kopyala ve uygulama anahtarı üret
 cp .env.example .env
 php artisan key:generate
 
-# 3. Configure your DB in .env (SQLite works out of the box)
-#    Default: DB_CONNECTION=sqlite
+# 3. Veritabanı ayarı (.env)
+#    Varsayılan: DB_CONNECTION=sqlite
 touch database/database.sqlite
 
-# 4. Run migrations
+# 4. Migrasyonları çalıştır
 php artisan migrate
 
-# 5. (Optional) Install JS dependencies & build front assets
+# 5. (İsteğe bağlı) JS bağımlılıkları ve varlıklar
 npm install
 npm run build
 ```
 
-## Running the app
+## Çalıştırma
 
 ```bash
-# Development server (runs server + queue + logs + vite together)
+# Tüm servisleri birlikte (server + queue + log + vite)
 composer dev
 
-# Or run pieces individually
-php artisan serve           # API on http://localhost:8000
+# Veya tek tek
+php artisan serve            # API: http://localhost:8000
 php artisan queue:listen
-php artisan pail            # log tailer
-npm run dev                 # vite dev server
+php artisan pail             # log izleyici
+npm run dev                  # vite
 ```
 
-## API Overview
+API taban URL'si: `http://localhost:8000/api`
 
-Base URL: `/api`
+## API Uç Noktaları Özeti
 
-### Public — Auth
+Tüm kimlik doğrulama gerektiren uç noktalar `Authorization: Bearer <token>` başlığı ile kullanılır.
 
-| Method | Endpoint                  | Description                |
-| ------ | ------------------------- | -------------------------- |
-| POST   | `/customer/register`      | Register a new customer    |
-| POST   | `/customer/login`         | Customer login             |
-| POST   | `/staff/login`            | Staff login                |
-| POST   | `/admin/login`            | Admin login                |
+### Herkese Açık — Kimlik Doğrulama
 
-### Public — Catalog & Availability
+| Method | Endpoint               | Açıklama                  |
+| ------ | ---------------------- | ------------------------- |
+| POST   | `/customer/register`   | Yeni müşteri kaydı        |
+| POST   | `/customer/login`      | Müşteri girişi            |
+| POST   | `/staff/login`         | Personel girişi           |
+| POST   | `/admin/login`         | Admin girişi              |
 
-| Method | Endpoint                              | Description                       |
-| ------ | ------------------------------------- | --------------------------------- |
-| GET    | `/categories`                         | List all categories                |
-| GET    | `/categories/{category}`              | Show a category                    |
-| GET    | `/services`                           | List all services                  |
-| GET    | `/services/{service}`                 | Show a service                     |
-| GET    | `/services/{service}/staff`           | List staff available for a service |
-| GET    | `/categories/{category}/staff`        | List staff in a category           |
-| GET    | `/availability`                       | Check availability for a slot      |
+### Herkese Açık — Katalog & Müsaitlik
 
-### Customer (auth: `customer`)
+| Method | Endpoint                          | Açıklama                              |
+| ------ | --------------------------------- | ------------------------------------- |
+| GET    | `/categories`                     | Kategorileri listele                  |
+| GET    | `/categories/{category}`          | Kategori detayı                       |
+| GET    | `/services`                       | Hizmetleri listele                    |
+| GET    | `/services/{service}`             | Hizmet detayı                         |
+| GET    | `/services/{service}/staff`       | Hizmete uygun personelleri listele    |
+| GET    | `/categories/{category}/staff`    | Kategorideki personelleri listele     |
+| GET    | `/availability`                   | Tarih/saat müsaitlik kontrolü         |
 
-| Method | Endpoint                          | Description                   |
-| ------ | --------------------------------- | ----------------------------- |
-| POST   | `/customer/logout`                | Log out                       |
-| POST   | `/appointments`                   | Create a new appointment      |
-| PATCH  | `/appointments/{id}/cancel`       | Cancel own appointment        |
-| GET    | `/my-appointments`                | List own appointments         |
-| GET    | `/my-appointments/{id}`           | Show own appointment detail   |
-| GET    | `/customer/profile`               | Show profile                  |
-| PUT    | `/customer/profile`               | Update profile                |
+### Müşteri (`auth:customer`)
 
-### Staff (auth: `staff`)
+| Method | Endpoint                       | Açıklama                          |
+| ------ | ------------------------------ | --------------------------------- |
+| POST   | `/customer/logout`             | Çıkış                             |
+| POST   | `/appointments`                | **Yeni randevu oluştur**          |
+| PATCH  | `/appointments/{id}/cancel`    | **Randevuyu iptal et**            |
+| GET    | `/my-appointments`             | Kendi randevularını listele       |
+| GET    | `/my-appointments/{id}`        | Randevu detayı                    |
+| GET    | `/customer/profile`            | Profil görüntüle                  |
+| PUT    | `/customer/profile`            | Profil güncelle                   |
 
-| Method | Endpoint                                   | Description                  |
-| ------ | ------------------------------------------ | ---------------------------- |
-| POST   | `/staff/logout`                            | Log out                      |
-| GET    | `/staff/appointments`                      | List assigned appointments   |
-| GET    | `/staff/appointments/{id}`                 | Show assigned appointment    |
-| PATCH  | `/staff/appointments/{id}/status`          | Update appointment status    |
-| GET    | `/staff/profile`                           | Show profile                 |
-| PUT    | `/staff/profile`                           | Update profile               |
+### Personel (`auth:staff`)
 
-### Admin (auth: `admin`)
+| Method | Endpoint                                | Açıklama                          |
+| ------ | --------------------------------------- | --------------------------------- |
+| POST   | `/staff/logout`                         | Çıkış                             |
+| GET    | `/staff/appointments`                   | Atanmış randevuları listele       |
+| GET    | `/staff/appointments/{id}`              | Randevu detayı                    |
+| PATCH  | `/staff/appointments/{id}/status`       | Randevu durumunu güncelle         |
+| GET    | `/staff/profile`                        | Profil görüntüle                  |
+| PUT    | `/staff/profile`                        | Profil güncelle                   |
 
-| Method | Endpoint                         | Description                       |
-| ------ | -------------------------------- | --------------------------------- |
-| POST   | `/admin/logout`                  | Log out                           |
-| GET    | `/admin/profile`                 | Show profile                      |
-| PUT    | `/admin/profile`                 | Update profile                    |
-| GET/POST/PUT/DELETE | `/categories` (except `index`, `show`) | Manage categories  |
-| GET/POST/PUT/DELETE | `/services`   (except `index`, `show`) | Manage services    |
-| GET/POST/PUT/DELETE | `/staff-members`                       | Manage staff        |
-| GET    | `/appointments`                  | List all appointments             |
-| GET    | `/appointments/{id}`             | Show any appointment              |
-| PUT    | `/appointments/{id}`             | Update any appointment            |
-| DELETE | `/appointments/{id}`             | Delete an appointment             |
+### Admin (`auth:admin`)
 
-All authenticated endpoints expect a Bearer token in the `Authorization` header:
-`Authorization: Bearer <token>`
+| Method | Endpoint                                | Açıklama                          |
+| ------ | --------------------------------------- | --------------------------------- |
+| POST   | `/admin/logout`                         | Çıkış                             |
+| GET    | `/admin/profile`                        | Profil görüntüle                  |
+| PUT    | `/admin/profile`                        | Profil güncelle                   |
+| GET/POST/PUT/DELETE | `/categories`           | Kategori yönetimi                 |
+| GET/POST/PUT/DELETE | `/services`             | Hizmet yönetimi                   |
+| GET/POST/PUT/DELETE | `/staff-members`        | Personel yönetimi                 |
+| GET    | `/appointments`                         | Tüm randevuları listele           |
+| GET    | `/appointments/{id}`                    | Randevu detayı                    |
+| PUT    | `/appointments/{id}`                    | **Randevu düzenle**               |
+| DELETE | `/appointments/{id}`                    | Randevu sil                       |
 
-## Project Structure
+## Filtreleme & Arama (Randevu Listesi)
+
+Admin tarafında `GET /appointments` uç noktası aşağıdaki sorgu parametrelerini destekler:
+
+| Parametre     | Açıklama                            |
+| ------------- | ----------------------------------- |
+| `status`      | Randevu durumuna göre filtrele      |
+| `staff_id`    | Personele göre filtrele             |
+| `date`        | Tarihe göre filtrele                |
+| `search`      | Müşteri adına göre arama            |
+
+Örnek:
+
+```
+GET /api/appointments?status=pending&staff_id=3&date=2026-07-24&search=ahmet
+```
+
+## Proje Yapısı
 
 ```
 app/
-├── Http/Controllers/   # API controllers
-└── Models/             # Eloquent models (Admin, Staff, Customer, Appointment, ...)
+├── Http/Controllers/      # API controller'ları
+└── Models/                # Eloquent modelleri (Admin, Staff, Customer, Appointment, Category, Service, ...)
 database/
+├── migrations/
+└── seeders/
 routes/
-├── api.php             # API routes (this is the main one)
+├── api.php                # API rotaları (ana giriş noktası)
 ├── web.php
 └── console.php
 config/
 ```
 
-## Testing
+## Testler
 
 ```bash
 composer test
-# or
+# veya
 php artisan test
 ```
 
-Tests are written with **Pest**.
+Testler **Pest** ile yazılmıştır.
 
-## License
+## Lisans
 
 MIT
