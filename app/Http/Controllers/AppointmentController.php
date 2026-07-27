@@ -168,6 +168,10 @@ class AppointmentController extends Controller
         return DB::transaction(function () use ($appointment, $staff, $validated) {
             $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
 
+            if (!$locked) {
+                return response()->json(['message' => 'Randevu bulunamadı.'], 404);
+            }
+
             if ($locked->staff_id !== $staff->id) {
                 return response()->json(['message' => 'Bu randevuyu güncelleme yetkiniz yok'], 403);
             }
@@ -184,7 +188,7 @@ class AppointmentController extends Controller
 
             $locked->update(['state_id' => $validated['state_id']]);
 
-            return response()->json($locked->load(['customer.person', 'service', 'status']));
+            return response()->json($locked->load(['staff.person', 'customer.person', 'service', 'status']));
         });
     }
 
@@ -257,7 +261,10 @@ class AppointmentController extends Controller
         }
 
         return DB::transaction(function () use ($validated, $startDate, $endDate, $request) {
-            Staff::where('id', $validated['staff_id'])->lockForUpdate()->first();
+            $lockedStaff = Staff::where('id', $validated['staff_id'])->lockForUpdate()->first();
+            if (!$lockedStaff) {
+                return response()->json(['message' => 'Personel bulunamadı.'], 404);
+            }
 
             $conflict = Appointment::conflicting($validated['staff_id'], $startDate, $endDate)->exists();
 
@@ -328,67 +335,62 @@ class AppointmentController extends Controller
         $staffId = $validated['staff_id'] ?? $appointment->staff_id;
         $serviceId = $validated['service_id'] ?? $appointment->service_id;
 
-        if (isset($validated['staff_id'])) {
-            $isManaged = Staff::where('admin_id', $request->user()->id)
-                              ->where('id', $staffId)->exists();
-            if (!$isManaged) {
-                return response()->json(['message' => 'Bu personel sizin yönetiminizde değil.'], 403);
+        return DB::transaction(function () use ($request, $appointment, $validated, $staffId, $serviceId) {
+            $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+            if (!$locked) {
+                return response()->json(['message' => 'Randevu bulunamadı.'], 404);
             }
-        }
 
-        $updateData = [];
-        if (isset($validated['state_id'])) {
-            $lockResult = DB::transaction(function () use ($appointment, $validated) {
-                $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+            $updateData = [];
 
+            if (isset($validated['state_id'])) {
                 $allowedTransitions = [
                     Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
                     Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
                 ];
-
                 $allowed = $allowedTransitions[$locked->state_id] ?? [];
                 if (!in_array($validated['state_id'], $allowed)) {
                     return response()->json(['message' => 'Bu durum geçişi geçersiz.'], 422);
                 }
-
-                return null;
-            });
-
-            if ($lockResult !== null) {
-                return $lockResult;
+                $updateData['state_id'] = $validated['state_id'];
             }
 
-            $updateData['state_id'] = $validated['state_id'];
-        }
-
-        $needsConflictCheck = isset($validated['staff_id']) || isset($validated['service_id']) || isset($validated['start_date']);
-
-        if ($needsConflictCheck) {
-            $service = Service::findOrFail($serviceId);
-            $staff = Staff::findOrFail($staffId);
-
-            if ($staff->catagory_id !== $service->catagory_id) {
-                return response()->json([
-                    'message' => 'Bu personel seçilen hizmeti sunmamaktadır.',
-                ], 422);
+            if (isset($validated['staff_id'])) {
+                $isManaged = Staff::where('admin_id', $request->user()->id)
+                                  ->where('id', $staffId)->exists();
+                if (!$isManaged) {
+                    return response()->json(['message' => 'Bu personel sizin yönetiminizde değil.'], 403);
+                }
             }
 
-            $startDate = isset($validated['start_date'])
-                ? Carbon::parse($validated['start_date'])
-                : $appointment->start_date;
+            $needsConflictCheck = isset($validated['staff_id']) || isset($validated['service_id']) || isset($validated['start_date']);
 
-            $endDate = $startDate->copy()->addMinutes($service->duration);
+            if ($needsConflictCheck) {
+                $service = Service::findOrFail($serviceId);
+                $lockedStaff = Staff::where('id', $staffId)->lockForUpdate()->first();
+                if (!$lockedStaff) {
+                    return response()->json(['message' => 'Personel bulunamadı.'], 404);
+                }
 
-            if (!$this->isWithinWorkingHours($startDate, $endDate)) {
-                return response()->json([
-                    'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
-                ], 422);
-            }
+                if ($lockedStaff->catagory_id !== $service->catagory_id) {
+                    return response()->json([
+                        'message' => 'Bu personel seçilen hizmeti sunmamaktadır.',
+                    ], 422);
+                }
 
-            $conflictResult = DB::transaction(function () use ($staffId, $startDate, $endDate, $appointment) {
-                Staff::where('id', $staffId)->lockForUpdate()->first();
+                $startDate = isset($validated['start_date'])
+                    ? Carbon::parse($validated['start_date'])
+                    : $appointment->start_date;
 
-                $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
+                $endDate = $startDate->copy()->addMinutes($service->duration);
+
+                if (!$this->isWithinWorkingHours($startDate, $endDate)) {
+                    return response()->json([
+                        'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
+                    ], 422);
+                }
+
+                $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $locked->id)->exists();
 
                 if ($conflict) {
                     return response()->json([
@@ -396,22 +398,16 @@ class AppointmentController extends Controller
                     ], 409);
                 }
 
-                return null;
-            });
-
-            if ($conflictResult !== null) {
-                return $conflictResult;
+                $updateData['staff_id'] = $staffId;
+                $updateData['service_id'] = $serviceId;
+                $updateData['start_date'] = $startDate;
+                $updateData['end_date'] = $endDate;
             }
 
-            $updateData['staff_id'] = $staffId;
-            $updateData['service_id'] = $serviceId;
-            $updateData['start_date'] = $startDate;
-            $updateData['end_date'] = $endDate;
-        }
+            $locked->update($updateData);
 
-        $appointment->update($updateData);
-
-        return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']));
+            return response()->json($locked->load(['staff.person', 'customer.person', 'service', 'status']));
+        });
     }
 
     /**
@@ -421,6 +417,10 @@ class AppointmentController extends Controller
     {
         return DB::transaction(function () use ($appointment, $request) {
             $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+
+            if (!$locked) {
+                return response()->json(['message' => 'Randevu bulunamadı.'], 404);
+            }
 
             if ($locked->customer_id !== $request->user()->id) {
                 return response()->json(['message' => 'Bu randevuyu iptal etme yetkiniz yok'], 403);
@@ -497,7 +497,10 @@ class AppointmentController extends Controller
         }
 
         return DB::transaction(function () use ($staffId, $serviceId, $startDate, $endDate, $appointment) {
-            Staff::where('id', $staffId)->lockForUpdate()->first();
+            $lockedStaff = Staff::where('id', $staffId)->lockForUpdate()->first();
+            if (!$lockedStaff) {
+                return response()->json(['message' => 'Personel bulunamadı.'], 404);
+            }
 
             $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
 

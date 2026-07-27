@@ -87,10 +87,7 @@ class Appointment extends Model
     {
         return match ($tab) {
             'upcoming' => $query->whereIn('state_id', [Status::PENDING, Status::CONFIRMED])
-                ->where(function ($q) {
-                    $q->where('start_date', '>=', now())
-                      ->orWhere('state_id', Status::CONFIRMED);
-                }),
+                ->where('start_date', '>=', now()),
             'pending' => $query->where('state_id', Status::PENDING),
             'completed' => $query->where('state_id', Status::COMPLETED),
             'cancelled' => $query->where('state_id', Status::CANCELLED),

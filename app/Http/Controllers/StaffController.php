@@ -123,10 +123,14 @@ class StaffController extends Controller
     {
         $perPage = max(1, min(100, (int) $request->get('per_page', 50)));
 
-        $staff = Staff::where('catagory_id', $category->id)
-            ->with('person')
-            ->paginate($perPage);
+        $query = Staff::where('catagory_id', $category->id)
+            ->with('person');
 
-        return response()->json($staff);
+        $allowedSorts = ['id', 'job_title', 'email', 'created_at'];
+        $sortBy = in_array($request->get('sort_by', 'id'), $allowedSorts, true) ? $request->get('sort_by', 'id') : 'id';
+        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true) ? strtolower($request->get('sort_order', 'asc')) : 'asc';
+        $query->orderBy($sortBy, $sortOrder);
+
+        return response()->json($query->paginate($perPage));
     }
 }
