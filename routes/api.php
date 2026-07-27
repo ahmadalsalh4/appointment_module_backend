@@ -23,18 +23,9 @@ Route::middleware('auth:customer,staff,admin')->group(function () {
     Route::post('/switch-role', [UnifiedAuthController::class, 'switchRole']);
 });
 
-// ============ AUTH (herkese açık) ============
+// ============ MÜŞTERİ KAYIT (herkese açık) ============
 Route::prefix('customer')->group(function () {
     Route::post('/register', [CustomerAuthController::class, 'register']);
-    Route::post('/login', [CustomerAuthController::class, 'login']);
-});
-
-Route::prefix('staff')->group(function () {
-    Route::post('/login', [StaffAuthController::class, 'login']);
-});
-
-Route::prefix('admin')->group(function () {
-    Route::post('/login', [AdminAuthController::class, 'login']);
 });
 
 // ============ HERKESE AÇIK (login gerekmez) ============

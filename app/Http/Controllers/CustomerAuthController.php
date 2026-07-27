@@ -5,9 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Person;
 use App\Models\Customer;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class CustomerAuthController extends Controller
 {
@@ -38,20 +36,6 @@ class CustomerAuthController extends Controller
         $token = $customer->createToken('customer-token')->plainTextToken;
 
         return response()->json(['customer' => $customer->load('person'), 'token' => $token, 'role' => 'customer'], 201);
-    }
-
-    public function login(Request $request)
-    {
-        $request->validate(['email' => 'required|email', 'password' => 'required']);
-
-        $customer = Customer::where('email', $request->email)->first();   // ✅ doğrudan customer'dan
-
-        if (!$customer || !Hash::check($request->password, $customer->password)) {
-            throw ValidationException::withMessages(['email' => ['Bilgiler hatalı.']]);
-        }
-
-        $token = $customer->createToken('customer-token')->plainTextToken;
-        return response()->json(['customer' => $customer->load('person'), 'token' => $token, 'role' => 'customer']);
     }
 
     public function logout(Request $request)
