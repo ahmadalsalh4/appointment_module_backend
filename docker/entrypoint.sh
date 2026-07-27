@@ -16,6 +16,11 @@ fi
 
 php artisan migrate --force --no-interaction
 
+if [ "$SEED_DATABASE" = "true" ]; then
+    echo "Seeding database..."
+    php artisan db:seed --force --no-interaction
+fi
+
 php artisan config:clear
 php artisan route:clear
 php artisan view:clear
