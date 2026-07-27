@@ -5,6 +5,10 @@ export PORT="${PORT:-80}"
 envsubst '$PORT' < /etc/nginx/sites-enabled/default > /tmp/nginx.conf
 mv /tmp/nginx.conf /etc/nginx/sites-enabled/default
 
+if [ ! -f .env ]; then
+    cp .env.example .env
+fi
+
 if [ -z "$APP_KEY" ]; then
     echo "Generating APP_KEY..."
     php artisan key:generate --force --no-interaction
