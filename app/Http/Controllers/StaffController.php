@@ -119,11 +119,13 @@ class StaffController extends Controller
         return response()->json(['message' => 'Personel silindi']);
     }
 
-    public function byCategory(Category $category)
+    public function byCategory(Category $category, Request $request)
     {
+        $perPage = max(1, min(100, (int) $request->get('per_page', 50)));
+
         $staff = Staff::where('catagory_id', $category->id)
             ->with('person')
-            ->get();
+            ->paginate($perPage);
 
         return response()->json($staff);
     }

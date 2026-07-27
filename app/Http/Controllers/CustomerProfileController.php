@@ -20,7 +20,7 @@ class CustomerProfileController extends Controller
 
         $validated = $request->validate([
             'email' => ['sometimes', 'email', Rule::unique('customers', 'email')->ignore($customer->id)],
-            'password' => ['sometimes', 'string', 'min:6'],
+            'password' => ['sometimes', 'string', 'min:6', 'confirmed'],
             'name' => ['sometimes', 'string', 'max:100'],
             'surname' => ['sometimes', 'string', 'max:100'],
             'phone_number' => ['nullable', 'string', 'max:20'],

@@ -21,7 +21,7 @@ class StaffProfileController extends Controller
 
         $validated = $request->validate([
             'email' => ['sometimes', 'email', Rule::unique('staff', 'email')->ignore($staff->id)],
-            'password' => ['sometimes', 'string', 'min:6'],
+            'password' => ['sometimes', 'string', 'min:6', 'confirmed'],
             'job_title' => ['sometimes', 'string', 'max:100'],
             'catagory_id' => ['nullable', 'exists:categories,id'],
             'name' => ['sometimes', 'string', 'max:100'],

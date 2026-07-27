@@ -9,8 +9,8 @@ class CategoryController extends Controller
 {
     public function index(Request $request)
     {
-        $sortBy = in_array($request->get('sort_by'), ['id', 'name', 'created_at'], true) ? $request->get('sort_by') : 'name';
-        $sortOrder = in_array($request->get('sort_order'), ['asc', 'desc'], true) ? $request->get('sort_order') : 'asc';
+        $sortBy = in_array(strtolower($request->get('sort_by')), ['id', 'name', 'created_at'], true) ? strtolower($request->get('sort_by')) : 'name';
+        $sortOrder = in_array(strtolower($request->get('sort_order')), ['asc', 'desc'], true) ? strtolower($request->get('sort_order')) : 'asc';
 
         $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
 
@@ -48,8 +48,17 @@ class CategoryController extends Controller
 
     public function destroy(Category $category)
     {
-        $category->delete();
+        $hasActiveAppointments = \App\Models\Appointment::whereHas('service', function ($q) use ($category) {
+            $q->where('catagory_id', $category->id);
+        })->whereNotIn('state_id', [\App\Models\Status::CANCELLED])->exists();
 
+        if ($hasActiveAppointments) {
+            return response()->json([
+                'message' => 'Bu kategoriye ait aktif randevular bulunduğu için silinemez.',
+            ], 409);
+        }
+
+        $category->delete();
         return response()->json(['message' => 'Kategori silindi']);
     }
 }

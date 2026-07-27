@@ -32,7 +32,7 @@ class ServiceController extends Controller
         $validated = $request->validate([
             'catagory_id' => 'required|exists:categories,id',
             'name' => 'required|string|max:100',
-            'duration' => 'required|integer|min:5|max:480',
+            'duration' => 'required|integer|min:5|max:240',
         ]);
 
         $service = Service::create($validated);
@@ -50,7 +50,7 @@ class ServiceController extends Controller
         $validated = $request->validate([
             'catagory_id' => 'sometimes|exists:categories,id',
             'name' => 'sometimes|string|max:100',
-            'duration' => 'sometimes|integer|min:5|max:480',
+            'duration' => 'sometimes|integer|min:5|max:240',
         ]);
 
         $service->update($validated);
@@ -64,11 +64,13 @@ class ServiceController extends Controller
 
         return response()->json(['message' => 'Hizmet silindi']);
     }
-    public function getAvailableStaff(Service $service)
+    public function getAvailableStaff(Service $service, Request $request)
     {
+        $perPage = max(1, min(100, (int) $request->get('per_page', 50)));
+
         $staff = Staff::where('catagory_id', $service->catagory_id)
             ->with('person')
-            ->get();
+            ->paginate($perPage);
 
         return response()->json($staff);
     }

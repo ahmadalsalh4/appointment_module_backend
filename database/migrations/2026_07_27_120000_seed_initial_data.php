@@ -8,6 +8,23 @@ return new class extends Migration
 {
     public function up(): void
     {
+        $statuses = [
+            ['id' => 1, 'name' => 'pending'],
+            ['id' => 2, 'name' => 'confirmed'],
+            ['id' => 3, 'name' => 'completed'],
+            ['id' => 4, 'name' => 'cancelled'],
+        ];
+
+        foreach ($statuses as $status) {
+            $existing = DB::table('statuses')->where('id', $status['id'])->first();
+            if (!$existing) {
+                DB::table('statuses')->insert(array_merge($status, [
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]));
+            }
+        }
+
         $categories = ['Eğitim', 'Yazılım', 'Temizlik'];
         $categoryIds = [];
 
@@ -85,5 +102,6 @@ return new class extends Migration
         DB::table('admin')->where('email', 'admin@test.com')->delete();
         DB::table('persons')->where('phone_number', '5550000000')->delete();
         DB::table('categories')->whereIn('name', ['Eğitim', 'Yazılım', 'Temizlik'])->delete();
+        DB::table('statuses')->whereIn('id', [1, 2, 3, 4])->delete();
     }
 };

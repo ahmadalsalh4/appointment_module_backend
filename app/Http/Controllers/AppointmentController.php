@@ -9,6 +9,7 @@ use App\Models\Staff;
 use App\Models\Status;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class AppointmentController extends Controller
 {
@@ -25,6 +26,10 @@ class AppointmentController extends Controller
             ->whereIn('staff_id', $managedStaffIds);
 
         if ($request->filled('tab')) {
+            $validTabs = ['upcoming', 'pending', 'completed', 'cancelled'];
+            if (!in_array($request->tab, $validTabs, true)) {
+                return response()->json(['message' => 'Geçersiz tab değeri. Kullanılabilecek değerler: upcoming, pending, completed, cancelled.'], 422);
+            }
             $query->tab($request->tab);
         }
 
@@ -68,6 +73,10 @@ class AppointmentController extends Controller
             ->with(['staff.person', 'service', 'status']);
 
         if ($request->filled('tab')) {
+            $validTabs = ['upcoming', 'pending', 'completed', 'cancelled'];
+            if (!in_array($request->tab, $validTabs, true)) {
+                return response()->json(['message' => 'Geçersiz tab değeri. Kullanılabilecek değerler: upcoming, pending, completed, cancelled.'], 422);
+            }
             $query->tab($request->tab);
         }
 
@@ -109,6 +118,10 @@ class AppointmentController extends Controller
             ->with(['customer.person', 'service', 'status']);
 
         if ($request->filled('tab')) {
+            $validTabs = ['upcoming', 'pending', 'completed', 'cancelled'];
+            if (!in_array($request->tab, $validTabs, true)) {
+                return response()->json(['message' => 'Geçersiz tab değeri. Kullanılabilecek değerler: upcoming, pending, completed, cancelled.'], 422);
+            }
             $query->tab($request->tab);
         }
 
@@ -241,27 +254,31 @@ class AppointmentController extends Controller
             ], 422);
         }
 
-        $conflict = Appointment::conflicting($validated['staff_id'], $startDate, $endDate)->exists();
+        return DB::transaction(function () use ($validated, $startDate, $endDate, $request) {
+            Staff::where('id', $validated['staff_id'])->lockForUpdate()->first();
 
-        if ($conflict) {
-            return response()->json([
-                'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
-            ], 409);
-        }
+            $conflict = Appointment::conflicting($validated['staff_id'], $startDate, $endDate)->exists();
 
-        $appointment = Appointment::create([
-            'staff_id' => $validated['staff_id'],
-            'customer_id' => $request->user()->id,
-            'service_id' => $validated['service_id'],
-            'state_id' => Status::PENDING,
-            'start_date' => $startDate,
-            'end_date' => $endDate,
-        ]);
+            if ($conflict) {
+                return response()->json([
+                    'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
+                ], 409);
+            }
 
-        return response()->json(
-            $appointment->load(['staff.person', 'customer.person', 'service', 'status']),
-            201
-        );
+            $appointment = Appointment::create([
+                'staff_id' => $validated['staff_id'],
+                'customer_id' => $request->user()->id,
+                'service_id' => $validated['service_id'],
+                'state_id' => Status::PENDING,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+            ]);
+
+            return response()->json(
+                $appointment->load(['staff.person', 'customer.person', 'service', 'status']),
+                201
+            );
+        });
     }
 
     /**
@@ -309,8 +326,24 @@ class AppointmentController extends Controller
         $staffId = $validated['staff_id'] ?? $appointment->staff_id;
         $serviceId = $validated['service_id'] ?? $appointment->service_id;
 
+        if (isset($validated['staff_id'])) {
+            $isManaged = Staff::where('admin_id', $request->user()->id)
+                              ->where('id', $staffId)->exists();
+            if (!$isManaged) {
+                return response()->json(['message' => 'Bu personel sizin yönetiminizde değil.'], 403);
+            }
+        }
+
         $updateData = [];
         if (isset($validated['state_id'])) {
+            $allowedTransitions = [
+                Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
+                Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
+            ];
+            $allowed = $allowedTransitions[$appointment->state_id] ?? [];
+            if (!in_array($validated['state_id'], $allowed)) {
+                return response()->json(['message' => 'Bu durum geçişi geçersiz.'], 422);
+            }
             $updateData['state_id'] = $validated['state_id'];
         }
 
@@ -338,12 +371,22 @@ class AppointmentController extends Controller
                 ], 422);
             }
 
-            $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
+            $conflictResult = DB::transaction(function () use ($staffId, $startDate, $endDate, $appointment) {
+                Staff::where('id', $staffId)->lockForUpdate()->first();
 
-            if ($conflict) {
-                return response()->json([
-                    'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
-                ], 409);
+                $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
+
+                if ($conflict) {
+                    return response()->json([
+                        'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
+                    ], 409);
+                }
+
+                return null;
+            });
+
+            if ($conflictResult !== null) {
+                return $conflictResult;
             }
 
             $updateData['staff_id'] = $staffId;
@@ -435,24 +478,28 @@ class AppointmentController extends Controller
             ], 422);
         }
 
-        $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
+        return DB::transaction(function () use ($staffId, $serviceId, $startDate, $endDate, $appointment) {
+            Staff::where('id', $staffId)->lockForUpdate()->first();
 
-        if ($conflict) {
-            return response()->json([
-                'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
-            ], 409);
-        }
+            $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
 
-        $appointment->update([
-            'staff_id' => $staffId,
-            'service_id' => $serviceId,
-            'start_date' => $startDate,
-            'end_date' => $endDate,
-        ]);
+            if ($conflict) {
+                return response()->json([
+                    'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
+                ], 409);
+            }
 
-        return response()->json(
-            $appointment->load(['staff.person', 'customer.person', 'service', 'status'])
-        );
+            $appointment->update([
+                'staff_id' => $staffId,
+                'service_id' => $serviceId,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+            ]);
+
+            return response()->json(
+                $appointment->load(['staff.person', 'customer.person', 'service', 'status'])
+            );
+        });
     }
 
     /**

@@ -42,6 +42,15 @@ class AvailabilityController extends Controller
             $blockEnd = Carbon::parse("$date {$block['end']}");
             $slot = $blockStart->copy();
 
+            if ($blockStart->isToday()) {
+                $now = Carbon::now();
+                if ($slot->lt($now)) {
+                    $minutesSinceMidnight = $now->diffInMinutes($blockStart->copy()->startOfDay());
+                    $roundedMinutes = ceil($minutesSinceMidnight / 15) * 15;
+                    $slot = $blockStart->copy()->startOfDay()->addMinutes($roundedMinutes);
+                }
+            }
+
             while ($slot->copy()->addMinutes($duration)->lte($blockEnd)) {
                 $slotEnd = $slot->copy()->addMinutes($duration);
 
