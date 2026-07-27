@@ -12,8 +12,10 @@ class CategoryController extends Controller
         $sortBy = in_array($request->get('sort_by'), ['id', 'name', 'created_at']) ? $request->get('sort_by') : 'name';
         $sortOrder = in_array($request->get('sort_order'), ['asc', 'desc']) ? $request->get('sort_order') : 'asc';
 
+        $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
+
         return response()->json(
-            Category::orderBy($sortBy, $sortOrder)->paginate($request->get('per_page', 15))
+            Category::orderBy($sortBy, $sortOrder)->paginate($perPage)
         );
     }
 
@@ -36,7 +38,7 @@ class CategoryController extends Controller
     public function update(Request $request, Category $category)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:100',
+            'name' => 'sometimes|string|max:100',
         ]);
 
         $category->update($validated);

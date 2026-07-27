@@ -129,6 +129,7 @@ class UnifiedAuthController extends Controller
             ], 404);
         }
 
+        $user->currentAccessToken()->delete();
         $token = $model->createToken('auth-token')->plainTextToken;
 
         $relations = match ($targetRole) {

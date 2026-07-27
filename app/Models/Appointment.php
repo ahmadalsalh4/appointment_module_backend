@@ -23,6 +23,7 @@ class Appointment extends Model
     protected $casts = [
         'start_date' => 'datetime',
         'end_date'   => 'datetime',
+        'state_id'   => 'integer',
     ];
 
     public function staff()

@@ -20,6 +20,12 @@ class AvailabilityController extends Controller
         ]);
 
         $service = Service::findOrFail($validated['service_id']);
+        $staff = Staff::findOrFail($validated['staff_id']);
+
+        if ($staff->catagory_id !== $service->catagory_id) {
+            return response()->json(['message' => 'Bu personel seçilen hizmeti sunmamaktadır.'], 422);
+        }
+
         $duration = $service->duration;
         $date = $validated['date'];
 

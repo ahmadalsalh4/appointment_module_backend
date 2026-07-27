@@ -17,12 +17,14 @@ class ServiceController extends Controller
         }
 
         $allowedSorts = ['id', 'name', 'duration', 'catagory_id', 'created_at'];
-        $sortBy = in_array($request->get('sort_by'), $allowedSorts) ? $request->get('sort_by') : 'name';
-        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc']) ? $request->get('sort_order') : 'asc';
+        $sortBy = in_array($request->get('sort_by', 'name'), $allowedSorts) ? $request->get('sort_by', 'name') : 'name';
+        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc']) ? strtolower($request->get('sort_order', 'asc')) : 'asc';
 
         $query->orderBy($sortBy, $sortOrder);
 
-        return response()->json($query->paginate($request->get('per_page', 15)));
+        $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
+
+        return response()->json($query->paginate($perPage));
     }
 
     public function store(Request $request)
@@ -53,7 +55,7 @@ class ServiceController extends Controller
 
         $service->update($validated);
 
-        return response()->json($service);
+        return response()->json($service->load('category'));
     }
 
     public function destroy(Service $service)

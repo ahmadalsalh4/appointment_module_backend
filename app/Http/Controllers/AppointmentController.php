@@ -51,7 +51,9 @@ class AppointmentController extends Controller
             $query->orderBy('start_date', 'asc');
         }
 
-        return response()->json($query->paginate($request->get('per_page', 15)));
+        $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
+
+        return response()->json($query->paginate($perPage));
     }
 
     /**
@@ -85,7 +87,9 @@ class AppointmentController extends Controller
             $query->orderBy('start_date', 'asc');
         }
 
-        return response()->json($query->paginate($request->get('per_page', 15)));
+        $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
+
+        return response()->json($query->paginate($perPage));
     }
 
     /**
@@ -121,7 +125,9 @@ class AppointmentController extends Controller
             $query->orderBy('start_date', 'asc');
         }
 
-        return response()->json($query->paginate($request->get('per_page', 15)));
+        $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
+
+        return response()->json($query->paginate($perPage));
     }
 
     /**
@@ -141,8 +147,14 @@ class AppointmentController extends Controller
             'state_id' => 'required|in:' . Status::CONFIRMED . ',' . Status::COMPLETED . ',' . Status::CANCELLED,
         ]);
 
-        if ($validated['state_id'] == Status::CANCELLED && in_array($appointment->state_id, [Status::COMPLETED, Status::CANCELLED])) {
-            return response()->json(['message' => 'Tamamlanmış veya zaten iptal edilmiş randevular tekrar iptal edilemez.'], 422);
+        $allowedTransitions = [
+            Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
+            Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
+        ];
+
+        $allowed = $allowedTransitions[$appointment->state_id] ?? [];
+        if (!in_array($validated['state_id'], $allowed)) {
+            return response()->json(['message' => 'Bu durum geçişi geçersiz.'], 422);
         }
 
         $appointment->update([
@@ -271,6 +283,7 @@ class AppointmentController extends Controller
             'start_date' => [
                 'sometimes',
                 'date',
+                'after:now',
                 function ($attribute, $value, $fail) {
                     try {
                         $date = Carbon::parse($value);
@@ -352,7 +365,7 @@ class AppointmentController extends Controller
 
         return response()->json([
             'message' => 'Randevu iptal edildi',
-            'appointment' => $appointment->load('status'),
+            'appointment' => $appointment->load(['staff.person', 'customer.person', 'service', 'status']),
         ]);
     }
 

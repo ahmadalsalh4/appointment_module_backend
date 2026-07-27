@@ -30,8 +30,10 @@ class StaffController extends Controller
             $query->orderBy($sortBy, $sortOrder);
         }
 
+        $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
+
         return response()->json(
-            $query->with(['person', 'category'])->paginate($request->get('per_page', 15))
+            $query->with(['person', 'category'])->paginate($perPage)
         );
     }
 
@@ -89,10 +91,14 @@ class StaffController extends Controller
             'surname' => 'sometimes|string|max:100',
             'phone_number' => 'nullable|string|max:20',
             'catagory_id' => 'nullable|exists:categories,id',
+            'password' => 'sometimes|string|min:6',
         ]);
 
         DB::transaction(function () use ($validated, $staff_member) {
-            $staffData = array_intersect_key($validated, array_flip(['job_title', 'email', 'catagory_id']));
+            $staffData = array_intersect_key($validated, array_flip(['job_title', 'email', 'catagory_id', 'password']));
+            if (isset($staffData['password'])) {
+                $staffData['password'] = \Illuminate\Support\Facades\Hash::make($staffData['password']);
+            }
             if (!empty($staffData)) {
                 $staff_member->update($staffData);
             }
