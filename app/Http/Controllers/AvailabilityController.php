@@ -16,7 +16,7 @@ class AvailabilityController extends Controller
         $validated = $request->validate([
             'staff_id' => 'required|exists:staff,id',
             'service_id' => 'required|exists:services,id',
-            'date' => 'required|date',
+            'date' => 'required|date|after_or_equal:today',
         ]);
 
         $service = Service::findOrFail($validated['service_id']);

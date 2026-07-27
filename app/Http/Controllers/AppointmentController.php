@@ -45,8 +45,11 @@ class AppointmentController extends Controller
         }
 
         $allowedSorts = ['start_date', 'state_id', 'created_at'];
-        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts)) {
-            $query->orderBy($request->sort_by, $request->get('sort_order', 'asc'));
+        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true)
+            ? strtolower($request->get('sort_order', 'asc')) : 'asc';
+
+        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts, true)) {
+            $query->orderBy($request->sort_by, $sortOrder);
         } else {
             $query->orderBy('start_date', 'asc');
         }
@@ -81,8 +84,11 @@ class AppointmentController extends Controller
         }
 
         $allowedSorts = ['start_date', 'state_id', 'created_at'];
-        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts)) {
-            $query->orderBy($request->sort_by, $request->get('sort_order', 'asc'));
+        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true)
+            ? strtolower($request->get('sort_order', 'asc')) : 'asc';
+
+        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts, true)) {
+            $query->orderBy($request->sort_by, $sortOrder);
         } else {
             $query->orderBy('start_date', 'asc');
         }
@@ -119,8 +125,11 @@ class AppointmentController extends Controller
         }
 
         $allowedSorts = ['start_date', 'state_id', 'created_at'];
-        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts)) {
-            $query->orderBy($request->sort_by, $request->get('sort_order', 'asc'));
+        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true)
+            ? strtolower($request->get('sort_order', 'asc')) : 'asc';
+
+        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts, true)) {
+            $query->orderBy($request->sort_by, $sortOrder);
         } else {
             $query->orderBy('start_date', 'asc');
         }

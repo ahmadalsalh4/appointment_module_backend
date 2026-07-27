@@ -18,7 +18,7 @@ class StaffController extends Controller
         $sortBy = $request->get('sort_by', 'id');
         $sortOrder = strtolower($request->get('sort_order', 'asc')) === 'desc' ? 'desc' : 'asc';
 
-        if (!in_array($sortBy, $allowedSorts)) {
+        if (!in_array($sortBy, $allowedSorts, true)) {
             $sortBy = 'id';
         }
 
@@ -45,7 +45,7 @@ class StaffController extends Controller
             'phone_number' => 'nullable|string|max:20',
             'job_title' => 'required|string|max:100',
             'email' => 'required|email|unique:staff,email',
-            'password' => 'required|string|min:6',
+            'password' => 'required|string|min:6|confirmed',
             'catagory_id' => 'nullable|exists:categories,id',
         ]);
 
@@ -96,9 +96,6 @@ class StaffController extends Controller
 
         DB::transaction(function () use ($validated, $staff_member) {
             $staffData = array_intersect_key($validated, array_flip(['job_title', 'email', 'catagory_id', 'password']));
-            if (isset($staffData['password'])) {
-                $staffData['password'] = \Illuminate\Support\Facades\Hash::make($staffData['password']);
-            }
             if (!empty($staffData)) {
                 $staff_member->update($staffData);
             }

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Staff;
 use Illuminate\Http\Request;
 
 class StaffAuthController extends Controller

@@ -9,8 +9,8 @@ class CategoryController extends Controller
 {
     public function index(Request $request)
     {
-        $sortBy = in_array($request->get('sort_by'), ['id', 'name', 'created_at']) ? $request->get('sort_by') : 'name';
-        $sortOrder = in_array($request->get('sort_order'), ['asc', 'desc']) ? $request->get('sort_order') : 'asc';
+        $sortBy = in_array($request->get('sort_by'), ['id', 'name', 'created_at'], true) ? $request->get('sort_by') : 'name';
+        $sortOrder = in_array($request->get('sort_order'), ['asc', 'desc'], true) ? $request->get('sort_order') : 'asc';
 
         $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
 

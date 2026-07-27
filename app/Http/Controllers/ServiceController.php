@@ -17,8 +17,8 @@ class ServiceController extends Controller
         }
 
         $allowedSorts = ['id', 'name', 'duration', 'catagory_id', 'created_at'];
-        $sortBy = in_array($request->get('sort_by', 'name'), $allowedSorts) ? $request->get('sort_by', 'name') : 'name';
-        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc']) ? strtolower($request->get('sort_order', 'asc')) : 'asc';
+        $sortBy = in_array($request->get('sort_by', 'name'), $allowedSorts, true) ? $request->get('sort_by', 'name') : 'name';
+        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true) ? strtolower($request->get('sort_order', 'asc')) : 'asc';
 
         $query->orderBy($sortBy, $sortOrder);
 

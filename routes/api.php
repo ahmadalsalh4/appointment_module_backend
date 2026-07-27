@@ -15,7 +15,7 @@ use App\Http\Controllers\StaffProfileController;
 use App\Http\Controllers\UnifiedAuthController;
 
 // ============ BİRLEŞİK GİRİŞ (herkese açık) ============
-Route::post('/login', [UnifiedAuthController::class, 'login']);
+Route::post('/login', [UnifiedAuthController::class, 'login'])->middleware('throttle:10,1');
 
 // ============ ROL İŞLEMLERİ (herhangi bir guard ile giriş yapmış kullanıcı) ============
 Route::middleware('auth:customer,staff,admin')->group(function () {
@@ -38,7 +38,7 @@ Route::get('/services/{service}/staff', [ServiceController::class, 'getAvailable
 Route::get('/categories/{category}/staff', [StaffController::class, 'byCategory']);
 
 // ============ MÜŞTERİ GİRİŞİ GEREKTİRİR ============
-Route::middleware('auth:customer')->group(function () {
+Route::middleware(['auth:customer', 'ensureUserModel:App\Models\Customer'])->group(function () {
     Route::post('/customer/logout', [CustomerAuthController::class, 'logout']);
     Route::post('/appointments', [AppointmentController::class, 'store']);
     Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
@@ -51,7 +51,7 @@ Route::middleware('auth:customer')->group(function () {
 });
 
 // ============ PERSONEL GİRİŞİ GEREKTİRİR (sadece sıradan staff) ============
-Route::middleware('auth:staff')->group(function () {
+Route::middleware(['auth:staff', 'ensureUserModel:App\Models\Staff'])->group(function () {
     Route::post('/staff/logout', [StaffAuthController::class, 'logout']);
     Route::get('/staff/appointments', [AppointmentController::class, 'myStaffAppointments']);
     Route::get('/staff/appointments/{appointment}', [AppointmentController::class, 'myStaffAppointmentDetail']);
@@ -62,7 +62,7 @@ Route::middleware('auth:staff')->group(function () {
 });
 
 // ============ ADMIN GİRİŞİ GEREKTİRİR ============
-Route::middleware('auth:admin')->group(function () {
+Route::middleware(['auth:admin', 'ensureUserModel:App\Models\Admin'])->group(function () {
     Route::post('/admin/logout', [AdminAuthController::class, 'logout']);
     Route::get('/admin/profile', [AdminProfileController::class, 'show']);
     Route::put('/admin/profile', [AdminProfileController::class, 'update']);

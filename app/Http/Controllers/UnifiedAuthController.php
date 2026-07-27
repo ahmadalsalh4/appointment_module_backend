@@ -111,9 +111,14 @@ class UnifiedAuthController extends Controller
     {
         $request->validate([
             'role' => 'required|in:customer,staff,admin',
+            'password' => 'required|string',
         ]);
 
         $user = $request->user();
+
+        if (!Hash::check($request->password, $user->password)) {
+            throw ValidationException::withMessages(['password' => ['Şifre hatalı.']]);
+        }
         $email = $user->email;
         $targetRole = $request->role;
 
