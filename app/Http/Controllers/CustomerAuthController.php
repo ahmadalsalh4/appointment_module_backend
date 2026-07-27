@@ -33,7 +33,7 @@ class CustomerAuthController extends Controller
             ]);
         });
 
-        $token = $customer->createToken('customer-token')->plainTextToken;
+        $token = $customer->createToken('auth-token')->plainTextToken;
 
         return response()->json(['customer' => $customer->load('person'), 'token' => $token, 'role' => 'customer'], 201);
     }

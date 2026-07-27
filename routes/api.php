@@ -18,7 +18,7 @@ use App\Http\Controllers\UnifiedAuthController;
 Route::post('/login', [UnifiedAuthController::class, 'login'])->middleware('throttle:10,1');
 
 // ============ ROL İŞLEMLERİ (herhangi bir guard ile giriş yapmış kullanıcı) ============
-Route::middleware('auth:customer,staff,admin')->group(function () {
+Route::middleware(['auth:customer,staff,admin', 'throttle:10,1'])->group(function () {
     Route::get('/me/roles', [UnifiedAuthController::class, 'myRoles']);
     Route::post('/switch-role', [UnifiedAuthController::class, 'switchRole']);
 });

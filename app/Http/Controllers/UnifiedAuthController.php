@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Staff;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class UnifiedAuthController extends Controller
@@ -134,20 +135,25 @@ class UnifiedAuthController extends Controller
             ], 404);
         }
 
-        $user->currentAccessToken()->delete();
-        $token = $model->createToken('auth-token')->plainTextToken;
-
         $relations = match ($targetRole) {
             'customer' => ['person'],
             'staff' => ['person', 'managingAdmin'],
             'admin' => ['person'],
         };
 
-        return response()->json([
-            'user' => $model->load($relations),
-            'token' => $token,
-            'role' => $targetRole,
-        ]);
+        return DB::transaction(function () use ($user, $model, $targetRole, $relations) {
+            if ($user->currentAccessToken()) {
+                $user->currentAccessToken()->delete();
+            }
+
+            $token = $model->createToken('auth-token')->plainTextToken;
+
+            return response()->json([
+                'user' => $model->load($relations),
+                'token' => $token,
+                'role' => $targetRole,
+            ]);
+        });
     }
 
     private function getCurrentRole($user): string

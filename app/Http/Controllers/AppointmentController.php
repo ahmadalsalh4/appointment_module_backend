@@ -161,29 +161,31 @@ class AppointmentController extends Controller
     {
         $staff = $request->user(); // auth:staff guard'ı sayesinde her zaman gerçek Staff instance
 
-        if ($appointment->staff_id !== $staff->id) {
-            return response()->json(['message' => 'Bu randevuyu güncelleme yetkiniz yok'], 403);
-        }
-
         $validated = $request->validate([
             'state_id' => 'required|in:' . Status::CONFIRMED . ',' . Status::COMPLETED . ',' . Status::CANCELLED,
         ]);
 
-        $allowedTransitions = [
-            Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
-            Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
-        ];
+        return DB::transaction(function () use ($appointment, $staff, $validated) {
+            $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
 
-        $allowed = $allowedTransitions[$appointment->state_id] ?? [];
-        if (!in_array($validated['state_id'], $allowed)) {
-            return response()->json(['message' => 'Bu durum geçişi geçersiz.'], 422);
-        }
+            if ($locked->staff_id !== $staff->id) {
+                return response()->json(['message' => 'Bu randevuyu güncelleme yetkiniz yok'], 403);
+            }
 
-        $appointment->update([
-            'state_id' => $validated['state_id'],
-        ]);
+            $allowedTransitions = [
+                Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
+                Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
+            ];
 
-        return response()->json($appointment->load(['customer.person', 'service', 'status']));
+            $allowed = $allowedTransitions[$locked->state_id] ?? [];
+            if (!in_array($validated['state_id'], $allowed)) {
+                return response()->json(['message' => 'Bu durum geçişi geçersiz.'], 422);
+            }
+
+            $locked->update(['state_id' => $validated['state_id']]);
+
+            return response()->json($locked->load(['customer.person', 'service', 'status']));
+        });
     }
 
     /**
@@ -195,7 +197,7 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Bu randevuyu görme yetkiniz yok'], 403);
         }
 
-        return response()->json($appointment->load(['staff.person', 'service', 'status']));
+        return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']));
     }
 
     /**
@@ -207,7 +209,7 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Bu randevuyu görme yetkiniz yok'], 403);
         }
 
-        return response()->json($appointment->load(['customer.person', 'service', 'status']));
+        return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']));
     }
 
     /**
@@ -336,14 +338,26 @@ class AppointmentController extends Controller
 
         $updateData = [];
         if (isset($validated['state_id'])) {
-            $allowedTransitions = [
-                Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
-                Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
-            ];
-            $allowed = $allowedTransitions[$appointment->state_id] ?? [];
-            if (!in_array($validated['state_id'], $allowed)) {
-                return response()->json(['message' => 'Bu durum geçişi geçersiz.'], 422);
+            $lockResult = DB::transaction(function () use ($appointment, $validated) {
+                $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+
+                $allowedTransitions = [
+                    Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
+                    Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
+                ];
+
+                $allowed = $allowedTransitions[$locked->state_id] ?? [];
+                if (!in_array($validated['state_id'], $allowed)) {
+                    return response()->json(['message' => 'Bu durum geçişi geçersiz.'], 422);
+                }
+
+                return null;
+            });
+
+            if ($lockResult !== null) {
+                return $lockResult;
             }
+
             $updateData['state_id'] = $validated['state_id'];
         }
 
@@ -405,20 +419,24 @@ class AppointmentController extends Controller
      */
     public function cancel(Request $request, Appointment $appointment)
     {
-        if ($appointment->customer_id !== $request->user()->id) {
-            return response()->json(['message' => 'Bu randevuyu iptal etme yetkiniz yok'], 403);
-        }
+        return DB::transaction(function () use ($appointment, $request) {
+            $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
 
-        if (in_array($appointment->state_id, [Status::COMPLETED, Status::CANCELLED])) {
-            return response()->json(['message' => 'Tamamlanmış veya zaten iptal edilmiş randevular tekrar iptal edilemez.'], 422);
-        }
+            if ($locked->customer_id !== $request->user()->id) {
+                return response()->json(['message' => 'Bu randevuyu iptal etme yetkiniz yok'], 403);
+            }
 
-        $appointment->update(['state_id' => Status::CANCELLED]);
+            if (in_array($locked->state_id, [Status::COMPLETED, Status::CANCELLED])) {
+                return response()->json(['message' => 'Tamamlanmış veya zaten iptal edilmiş randevular tekrar iptal edilemez.'], 422);
+            }
 
-        return response()->json([
-            'message' => 'Randevu iptal edildi',
-            'appointment' => $appointment->load(['staff.person', 'customer.person', 'service', 'status']),
-        ]);
+            $locked->update(['state_id' => Status::CANCELLED]);
+
+            return response()->json([
+                'message' => 'Randevu iptal edildi',
+                'appointment' => $locked->load(['staff.person', 'customer.person', 'service', 'status']),
+            ]);
+        });
     }
 
     /**
@@ -546,7 +564,8 @@ class AppointmentController extends Controller
      */
     private function canAccess(Admin $admin, Appointment $appointment): bool
     {
-        $managedStaffIds = Staff::where('admin_id', $admin->id)->pluck('id');
-        return $managedStaffIds->contains($appointment->staff_id);
+        return Staff::where('admin_id', $admin->id)
+                    ->where('id', $appointment->staff_id)
+                    ->exists();
     }
 }

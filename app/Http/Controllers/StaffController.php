@@ -101,7 +101,7 @@ class StaffController extends Controller
             }
 
             $personData = array_intersect_key($validated, array_flip(['name', 'surname', 'phone_number']));
-            if (!empty($personData)) {
+            if (!empty($personData) && $staff_member->person) {
                 $staff_member->person->update($personData);
             }
         });

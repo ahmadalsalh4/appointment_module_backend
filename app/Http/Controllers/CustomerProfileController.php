@@ -33,7 +33,7 @@ class CustomerProfileController extends Controller
             }
 
             $personData = array_intersect_key($validated, array_flip(['name', 'surname', 'phone_number']));
-            if (!empty($personData)) {
+            if (!empty($personData) && $customer->person) {
                 $customer->person->update($personData);
             }
         });

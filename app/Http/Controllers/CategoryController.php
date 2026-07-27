@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Appointment;
 use App\Models\Category;
+use App\Models\Status;
 use Illuminate\Http\Request;
 
 class CategoryController extends Controller
@@ -48,9 +50,9 @@ class CategoryController extends Controller
 
     public function destroy(Category $category)
     {
-        $hasActiveAppointments = \App\Models\Appointment::whereHas('service', function ($q) use ($category) {
+        $hasActiveAppointments = Appointment::whereHas('service', function ($q) use ($category) {
             $q->where('catagory_id', $category->id);
-        })->whereNotIn('state_id', [\App\Models\Status::CANCELLED])->exists();
+        })->whereNotIn('state_id', [Status::COMPLETED, Status::CANCELLED])->exists();
 
         if ($hasActiveAppointments) {
             return response()->json([
