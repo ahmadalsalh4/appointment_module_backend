@@ -16,7 +16,13 @@ class ServiceController extends Controller
             $query->where('catagory_id', $request->catagory_id);
         }
 
-        return response()->json($query->get());
+        $allowedSorts = ['id', 'name', 'duration', 'catagory_id', 'created_at'];
+        $sortBy = in_array($request->get('sort_by'), $allowedSorts) ? $request->get('sort_by') : 'name';
+        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc']) ? $request->get('sort_order') : 'asc';
+
+        $query->orderBy($sortBy, $sortOrder);
+
+        return response()->json($query->paginate($request->get('per_page', 15)));
     }
 
     public function store(Request $request)

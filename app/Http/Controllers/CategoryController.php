@@ -7,9 +7,14 @@ use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Category::all());
+        $sortBy = in_array($request->get('sort_by'), ['id', 'name', 'created_at']) ? $request->get('sort_by') : 'name';
+        $sortOrder = in_array($request->get('sort_order'), ['asc', 'desc']) ? $request->get('sort_order') : 'asc';
+
+        return response()->json(
+            Category::orderBy($sortBy, $sortOrder)->paginate($request->get('per_page', 15))
+        );
     }
 
     public function store(Request $request)

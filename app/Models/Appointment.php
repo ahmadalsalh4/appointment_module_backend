@@ -81,4 +81,16 @@ class Appointment extends Model
                 ->orWhere('surname', 'like', "%{$name}%");
         });
     }
+
+    public function scopeTab($query, $tab)
+    {
+        return match ($tab) {
+            'upcoming' => $query->whereIn('state_id', [Status::PENDING, Status::CONFIRMED])
+                ->where('start_date', '>=', now()),
+            'pending' => $query->where('state_id', Status::PENDING),
+            'completed' => $query->where('state_id', Status::COMPLETED),
+            'cancelled' => $query->where('state_id', Status::CANCELLED),
+            default => $query,
+        };
+    }
 }

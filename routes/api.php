@@ -12,6 +12,16 @@ use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AvailabilityController;
 use App\Http\Controllers\CustomerProfileController;
 use App\Http\Controllers\StaffProfileController;
+use App\Http\Controllers\UnifiedAuthController;
+
+// ============ BİRLEŞİK GİRİŞ (herkese açık) ============
+Route::post('/login', [UnifiedAuthController::class, 'login']);
+
+// ============ ROL İŞLEMLERİ (herhangi bir guard ile giriş yapmış kullanıcı) ============
+Route::middleware('auth:customer,staff,admin')->group(function () {
+    Route::get('/me/roles', [UnifiedAuthController::class, 'myRoles']);
+    Route::post('/switch-role', [UnifiedAuthController::class, 'switchRole']);
+});
 
 // ============ AUTH (herkese açık) ============
 Route::prefix('customer')->group(function () {
@@ -43,6 +53,7 @@ Route::middleware('auth:customer')->group(function () {
     Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
     Route::get('/my-appointments', [AppointmentController::class, 'myAppointments']);
     Route::get('/my-appointments/{appointment}', [AppointmentController::class, 'myAppointmentDetail']);
+    Route::put('/my-appointments/{appointment}', [AppointmentController::class, 'updateMyAppointment']);
 
     Route::get('/customer/profile', [CustomerProfileController::class, 'show']);
     Route::put('/customer/profile', [CustomerProfileController::class, 'update']);

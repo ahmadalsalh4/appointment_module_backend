@@ -24,6 +24,10 @@ class AppointmentController extends Controller
         $query = Appointment::with(['staff.person', 'customer.person', 'service', 'status'])
             ->whereIn('staff_id', $managedStaffIds);
 
+        if ($request->filled('tab')) {
+            $query->tab($request->tab);
+        }
+
         if ($request->filled('status_id')) {
             $query->byStatus($request->status_id);
         }
@@ -40,7 +44,14 @@ class AppointmentController extends Controller
             $query->searchCustomer($request->customer_name);
         }
 
-        return response()->json($query->orderBy('start_date')->get());
+        $allowedSorts = ['start_date', 'state_id', 'created_at'];
+        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts)) {
+            $query->orderBy($request->sort_by, $request->get('sort_order', 'asc'));
+        } else {
+            $query->orderBy('start_date', 'asc');
+        }
+
+        return response()->json($query->paginate($request->get('per_page', 15)));
     }
 
     /**
@@ -50,6 +61,10 @@ class AppointmentController extends Controller
     {
         $query = Appointment::where('customer_id', $request->user()->id)
             ->with(['staff.person', 'service', 'status']);
+
+        if ($request->filled('tab')) {
+            $query->tab($request->tab);
+        }
 
         if ($request->filled('status_id')) {
             $query->byStatus($request->status_id);
@@ -63,7 +78,14 @@ class AppointmentController extends Controller
             $query->onDate($request->date);
         }
 
-        return response()->json($query->orderBy('start_date')->get());
+        $allowedSorts = ['start_date', 'state_id', 'created_at'];
+        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts)) {
+            $query->orderBy($request->sort_by, $request->get('sort_order', 'asc'));
+        } else {
+            $query->orderBy('start_date', 'asc');
+        }
+
+        return response()->json($query->paginate($request->get('per_page', 15)));
     }
 
     /**
@@ -76,6 +98,10 @@ class AppointmentController extends Controller
         $query = Appointment::where('staff_id', $staff->id)
             ->with(['customer.person', 'service', 'status']);
 
+        if ($request->filled('tab')) {
+            $query->tab($request->tab);
+        }
+
         if ($request->filled('status_id')) {
             $query->byStatus($request->status_id);
         }
@@ -88,7 +114,14 @@ class AppointmentController extends Controller
             $query->searchCustomer($request->customer_name);
         }
 
-        return response()->json($query->orderBy('start_date')->get());
+        $allowedSorts = ['start_date', 'state_id', 'created_at'];
+        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts)) {
+            $query->orderBy($request->sort_by, $request->get('sort_order', 'asc'));
+        } else {
+            $query->orderBy('start_date', 'asc');
+        }
+
+        return response()->json($query->paginate($request->get('per_page', 15)));
     }
 
     /**
@@ -105,8 +138,12 @@ class AppointmentController extends Controller
         }
 
         $validated = $request->validate([
-            'state_id' => 'required|in:' . Status::CONFIRMED . ',' . Status::COMPLETED,
+            'state_id' => 'required|in:' . Status::CONFIRMED . ',' . Status::COMPLETED . ',' . Status::CANCELLED,
         ]);
+
+        if ($validated['state_id'] == Status::CANCELLED && in_array($appointment->state_id, [Status::COMPLETED, Status::CANCELLED])) {
+            return response()->json(['message' => 'Tamamlanmış veya zaten iptal edilmiş randevular tekrar iptal edilemez.'], 422);
+        }
 
         $appointment->update([
             'state_id' => $validated['state_id'],
@@ -219,9 +256,7 @@ class AppointmentController extends Controller
     }
 
     /**
-     * ADMIN: randevu durumunu güncelleme (yetki kontrolüyle)
-     * Not: sadece state_id değiştirilebilir (onaylama/tamamlama gibi).
-     * Personel/müşteri/tarih değişikliği için ayrı bir "reschedule" akışı düşünülebilir.
+     * ADMIN: randevu güncelleme (yetki kontrolüyle)
      */
     public function update(Request $request, Appointment $appointment)
     {
@@ -230,12 +265,72 @@ class AppointmentController extends Controller
         }
 
         $validated = $request->validate([
-            'state_id' => 'required|exists:statuses,id',
+            'state_id' => 'sometimes|exists:statuses,id',
+            'staff_id' => 'sometimes|exists:staff,id',
+            'service_id' => 'sometimes|exists:services,id',
+            'start_date' => [
+                'sometimes',
+                'date',
+                function ($attribute, $value, $fail) {
+                    try {
+                        $date = Carbon::parse($value);
+                        if ($date->minute % 15 !== 0 || $date->second !== 0) {
+                            $fail('Randevu başlangıç saati sadece :00, :15, :30 veya :45. dakikalara ayarlanabilir (Örn: 15:00:00, 15:15:00).');
+                        }
+                    } catch (\Exception $e) {
+                        $fail('Geçersiz tarih formatı.');
+                    }
+                },
+            ],
         ]);
 
-        $appointment->update([
-            'state_id' => $validated['state_id'],
-        ]);
+        $staffId = $validated['staff_id'] ?? $appointment->staff_id;
+        $serviceId = $validated['service_id'] ?? $appointment->service_id;
+
+        $updateData = [];
+        if (isset($validated['state_id'])) {
+            $updateData['state_id'] = $validated['state_id'];
+        }
+
+        $needsConflictCheck = isset($validated['staff_id']) || isset($validated['service_id']) || isset($validated['start_date']);
+
+        if ($needsConflictCheck) {
+            $service = Service::findOrFail($serviceId);
+            $staff = Staff::findOrFail($staffId);
+
+            if ($staff->catagory_id !== $service->catagory_id) {
+                return response()->json([
+                    'message' => 'Bu personel seçilen hizmeti sunmamaktadır.',
+                ], 422);
+            }
+
+            $startDate = isset($validated['start_date'])
+                ? Carbon::parse($validated['start_date'])
+                : $appointment->start_date;
+
+            $endDate = $startDate->copy()->addMinutes($service->duration);
+
+            if (!$this->isWithinWorkingHours($startDate, $endDate)) {
+                return response()->json([
+                    'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
+                ], 422);
+            }
+
+            $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
+
+            if ($conflict) {
+                return response()->json([
+                    'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
+                ], 409);
+            }
+
+            $updateData['staff_id'] = $staffId;
+            $updateData['service_id'] = $serviceId;
+            $updateData['start_date'] = $startDate;
+            $updateData['end_date'] = $endDate;
+        }
+
+        $appointment->update($updateData);
 
         return response()->json($appointment->load(['staff.person', 'customer.person', 'service', 'status']));
     }
@@ -259,6 +354,83 @@ class AppointmentController extends Controller
             'message' => 'Randevu iptal edildi',
             'appointment' => $appointment->load('status'),
         ]);
+    }
+
+    /**
+     * CUSTOMER: randevu düzenleme (sadece PENDING durumundaki kendi randevusu)
+     */
+    public function updateMyAppointment(Request $request, Appointment $appointment)
+    {
+        if ($appointment->customer_id !== $request->user()->id) {
+            return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
+        }
+
+        if ($appointment->state_id !== Status::PENDING) {
+            return response()->json(['message' => 'Sadece onay bekleyen randevular düzenlenebilir.'], 422);
+        }
+
+        $validated = $request->validate([
+            'staff_id' => 'sometimes|exists:staff,id',
+            'service_id' => 'sometimes|exists:services,id',
+            'start_date' => [
+                'sometimes',
+                'date',
+                'after:now',
+                function ($attribute, $value, $fail) {
+                    try {
+                        $date = Carbon::parse($value);
+                        if ($date->minute % 15 !== 0 || $date->second !== 0) {
+                            $fail('Randevu başlangıç saati sadece :00, :15, :30 veya :45. dakikalara ayarlanabilir (Örn: 15:00:00, 15:15:00).');
+                        }
+                    } catch (\Exception $e) {
+                        $fail('Geçersiz tarih formatı.');
+                    }
+                },
+            ],
+        ]);
+
+        $staffId = $validated['staff_id'] ?? $appointment->staff_id;
+        $serviceId = $validated['service_id'] ?? $appointment->service_id;
+
+        $service = Service::findOrFail($serviceId);
+        $staff = Staff::findOrFail($staffId);
+
+        if ($staff->catagory_id !== $service->catagory_id) {
+            return response()->json([
+                'message' => 'Bu personel seçilen hizmeti sunmamaktadır.',
+            ], 422);
+        }
+
+        $startDate = isset($validated['start_date'])
+            ? Carbon::parse($validated['start_date'])
+            : $appointment->start_date;
+
+        $endDate = $startDate->copy()->addMinutes($service->duration);
+
+        if (!$this->isWithinWorkingHours($startDate, $endDate)) {
+            return response()->json([
+                'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
+            ], 422);
+        }
+
+        $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
+
+        if ($conflict) {
+            return response()->json([
+                'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
+            ], 409);
+        }
+
+        $appointment->update([
+            'staff_id' => $staffId,
+            'service_id' => $serviceId,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+        ]);
+
+        return response()->json(
+            $appointment->load(['staff.person', 'customer.person', 'service', 'status'])
+        );
     }
 
     /**

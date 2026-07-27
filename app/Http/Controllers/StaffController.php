@@ -12,8 +12,26 @@ class StaffController extends Controller
 {
     public function index(Request $request)
     {
+        $query = Staff::where('admin_id', $request->user()->id);
+
+        $allowedSorts = ['id', 'job_title', 'email', 'catagory_id', 'created_at', 'name'];
+        $sortBy = $request->get('sort_by', 'id');
+        $sortOrder = strtolower($request->get('sort_order', 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        if (!in_array($sortBy, $allowedSorts)) {
+            $sortBy = 'id';
+        }
+
+        if ($sortBy === 'name') {
+            $query->join('persons', 'staff.person_id', '=', 'persons.id')
+                  ->orderBy('persons.name', $sortOrder)
+                  ->select('staff.*');
+        } else {
+            $query->orderBy($sortBy, $sortOrder);
+        }
+
         return response()->json(
-            Staff::where('admin_id', $request->user()->id)->with(['person', 'category'])->get()
+            $query->with(['person', 'category'])->paginate($request->get('per_page', 15))
         );
     }
 
