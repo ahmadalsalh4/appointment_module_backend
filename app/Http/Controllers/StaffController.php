@@ -91,7 +91,7 @@ class StaffController extends Controller
             'surname' => 'sometimes|string|max:100',
             'phone_number' => 'nullable|string|max:20',
             'catagory_id' => 'nullable|exists:categories,id',
-            'password' => 'sometimes|string|min:6',
+            'password' => 'sometimes|string|min:6|confirmed',
         ]);
 
         DB::transaction(function () use ($validated, $staff_member) {
@@ -113,6 +113,16 @@ class StaffController extends Controller
     {
         if ($staff_member->admin_id !== $request->user()->id) {
             return response()->json(['message' => 'Bu personeli silme yetkiniz yok'], 403);
+        }
+
+        $hasActiveAppointments = \App\Models\Appointment::where('staff_id', $staff_member->id)
+            ->whereNotIn('state_id', [\App\Models\Status::COMPLETED, \App\Models\Status::CANCELLED])
+            ->exists();
+
+        if ($hasActiveAppointments) {
+            return response()->json([
+                'message' => 'Bu personele ait aktif randevular bulunduğu için silinemez.',
+            ], 409);
         }
 
         $staff_member->delete();

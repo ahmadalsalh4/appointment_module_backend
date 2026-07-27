@@ -261,6 +261,8 @@ class AppointmentController extends Controller
         }
 
         return DB::transaction(function () use ($validated, $startDate, $endDate, $request) {
+            DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $validated['staff_id']]);
+
             $lockedStaff = Staff::where('id', $validated['staff_id'])->lockForUpdate()->first();
             if (!$lockedStaff) {
                 return response()->json(['message' => 'Personel bulunamadı.'], 404);
@@ -336,6 +338,8 @@ class AppointmentController extends Controller
         $serviceId = $validated['service_id'] ?? $appointment->service_id;
 
         return DB::transaction(function () use ($request, $appointment, $validated, $staffId, $serviceId) {
+            DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $staffId]);
+
             $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
             if (!$locked) {
                 return response()->json(['message' => 'Randevu bulunamadı.'], 404);
@@ -380,7 +384,7 @@ class AppointmentController extends Controller
 
                 $startDate = isset($validated['start_date'])
                     ? Carbon::parse($validated['start_date'])
-                    : $appointment->start_date;
+                    : $locked->start_date;
 
                 $endDate = $startDate->copy()->addMinutes($service->duration);
 
@@ -432,10 +436,7 @@ class AppointmentController extends Controller
 
             $locked->update(['state_id' => Status::CANCELLED]);
 
-            return response()->json([
-                'message' => 'Randevu iptal edildi',
-                'appointment' => $locked->load(['staff.person', 'customer.person', 'service', 'status']),
-            ]);
+            return response()->json($locked->load(['staff.person', 'customer.person', 'service', 'status']));
         });
     }
 
@@ -444,14 +445,6 @@ class AppointmentController extends Controller
      */
     public function updateMyAppointment(Request $request, Appointment $appointment)
     {
-        if ($appointment->customer_id !== $request->user()->id) {
-            return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
-        }
-
-        if ($appointment->state_id !== Status::PENDING) {
-            return response()->json(['message' => 'Sadece onay bekleyen randevular düzenlenebilir.'], 422);
-        }
-
         $validated = $request->validate([
             'staff_id' => 'sometimes|exists:staff,id',
             'service_id' => 'sometimes|exists:services,id',
@@ -475,34 +468,47 @@ class AppointmentController extends Controller
         $staffId = $validated['staff_id'] ?? $appointment->staff_id;
         $serviceId = $validated['service_id'] ?? $appointment->service_id;
 
-        $service = Service::findOrFail($serviceId);
-        $staff = Staff::findOrFail($staffId);
+        return DB::transaction(function () use ($request, $appointment, $validated, $staffId, $serviceId) {
+            DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $staffId]);
 
-        if ($staff->catagory_id !== $service->catagory_id) {
-            return response()->json([
-                'message' => 'Bu personel seçilen hizmeti sunmamaktadır.',
-            ], 422);
-        }
+            $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+            if (!$locked) {
+                return response()->json(['message' => 'Randevu bulunamadı.'], 404);
+            }
 
-        $startDate = isset($validated['start_date'])
-            ? Carbon::parse($validated['start_date'])
-            : $appointment->start_date;
+            if ($locked->customer_id !== $request->user()->id) {
+                return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
+            }
 
-        $endDate = $startDate->copy()->addMinutes($service->duration);
+            if ($locked->state_id !== Status::PENDING) {
+                return response()->json(['message' => 'Sadece onay bekleyen randevular düzenlenebilir.'], 422);
+            }
 
-        if (!$this->isWithinWorkingHours($startDate, $endDate)) {
-            return response()->json([
-                'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
-            ], 422);
-        }
-
-        return DB::transaction(function () use ($staffId, $serviceId, $startDate, $endDate, $appointment) {
+            $service = Service::findOrFail($serviceId);
             $lockedStaff = Staff::where('id', $staffId)->lockForUpdate()->first();
             if (!$lockedStaff) {
                 return response()->json(['message' => 'Personel bulunamadı.'], 404);
             }
 
-            $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $appointment->id)->exists();
+            if ($lockedStaff->catagory_id !== $service->catagory_id) {
+                return response()->json([
+                    'message' => 'Bu personel seçilen hizmeti sunmamaktadır.',
+                ], 422);
+            }
+
+            $startDate = isset($validated['start_date'])
+                ? Carbon::parse($validated['start_date'])
+                : $locked->start_date;
+
+            $endDate = $startDate->copy()->addMinutes($service->duration);
+
+            if (!$this->isWithinWorkingHours($startDate, $endDate)) {
+                return response()->json([
+                    'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
+                ], 422);
+            }
+
+            $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $locked->id)->exists();
 
             if ($conflict) {
                 return response()->json([
@@ -510,7 +516,7 @@ class AppointmentController extends Controller
                 ], 409);
             }
 
-            $appointment->update([
+            $locked->update([
                 'staff_id' => $staffId,
                 'service_id' => $serviceId,
                 'start_date' => $startDate,
@@ -518,7 +524,7 @@ class AppointmentController extends Controller
             ]);
 
             return response()->json(
-                $appointment->load(['staff.person', 'customer.person', 'service', 'status'])
+                $locked->load(['staff.person', 'customer.person', 'service', 'status'])
             );
         });
     }

@@ -60,6 +60,16 @@ class ServiceController extends Controller
 
     public function destroy(Service $service)
     {
+        $hasActiveAppointments = \App\Models\Appointment::where('service_id', $service->id)
+            ->whereNotIn('state_id', [\App\Models\Status::COMPLETED, \App\Models\Status::CANCELLED])
+            ->exists();
+
+        if ($hasActiveAppointments) {
+            return response()->json([
+                'message' => 'Bu hizmete ait aktif randevular bulunduğu için silinemez.',
+            ], 409);
+        }
+
         $service->delete();
 
         return response()->json(['message' => 'Hizmet silindi']);
