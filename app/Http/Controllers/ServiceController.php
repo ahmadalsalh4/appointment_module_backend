@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Service;
 use App\Models\Staff;
+use App\Support\SearchHelper;
 use Illuminate\Http\Request;
 
 class ServiceController extends Controller
@@ -17,7 +18,7 @@ class ServiceController extends Controller
         }
 
         if ($request->filled('name')) {
-            $query->where('name', 'LIKE', '%' . $request->name . '%');
+            $query->whereRaw('name LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [SearchHelper::likeContains($request->name)]);
         }
 
         $allowedSorts = ['id', 'name', 'duration', 'catagory_id', 'created_at'];

@@ -28,13 +28,10 @@ class MultiRoleSeeder extends Seeder
 
         $person = Person::firstOrCreate(
             ['phone_number' => $phone],
-            [
-                'name' => 'Çoklu',
-                'surname' => 'Rol',
-            ],
+            ['name' => 'Çoklu', 'surname' => 'Rol'],
         );
 
-        Customer::firstOrCreate(
+        $customer = Customer::updateOrCreate(
             ['email' => $email],
             [
                 'person_id' => $person->id,
@@ -42,8 +39,9 @@ class MultiRoleSeeder extends Seeder
             ],
         );
 
+        $staffCreated = false;
         if ($category) {
-            Staff::firstOrCreate(
+            $staff = Staff::updateOrCreate(
                 ['email' => $email],
                 [
                     'person_id' => $person->id,
@@ -53,8 +51,15 @@ class MultiRoleSeeder extends Seeder
                     'catagory_id' => $category->id,
                 ],
             );
+            $staffCreated = $staff->wasRecentlyCreated || $staff->wasChanged();
+        } else {
+            $this->command->warn('MultiRoleSeeder: hiçbir kategori bulunamadı, personel kaydı atlandı.');
         }
 
-        $this->command->info("Çoklu rol kullanıcısı oluşturuldu: {$email} / {$password}");
+        if ($customer->wasRecentlyCreated || $staffCreated) {
+            $this->command->info("Çoklu rol kullanıcısı hazır: {$email} / {$password}");
+        } else {
+            $this->command->line("Çoklu rol kullanıcısı zaten mevcut: {$email}");
+        }
     }
 }

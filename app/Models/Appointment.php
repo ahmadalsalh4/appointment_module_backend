@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\SearchHelper;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -77,9 +78,12 @@ class Appointment extends Model
 
     public function scopeSearchCustomer($query, $name)
     {
-        return $query->whereHas('customer.person', function ($q) use ($name) {
-            $q->where('name', 'like', "%{$name}%")
-                ->orWhere('surname', 'like', "%{$name}%");
+        $escaped = SearchHelper::likeContains($name);
+        return $query->whereHas('customer.person', function ($q) use ($escaped) {
+            $q->where(function ($q2) use ($escaped) {
+                $q2->whereRaw('name LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [$escaped])
+                    ->orWhereRaw('surname LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [$escaped]);
+            });
         });
     }
 

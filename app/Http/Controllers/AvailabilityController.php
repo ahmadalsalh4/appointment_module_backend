@@ -29,29 +29,33 @@ class AvailabilityController extends Controller
         $duration = $service->duration;
         $date = $validated['date'];
 
-        // O günkü dolu randevuları çek
         $booked = Appointment::forStaff($validated['staff_id'])
             ->onDate($date)
             ->where('state_id', '!=', Status::CANCELLED)
             ->get(['start_date', 'end_date']);
 
         $availableSlots = [];
+        $isToday = Carbon::parse($date)->isToday();
+        $now = Carbon::now();
 
         foreach (Staff::WORK_BLOCKS as $block) {
             $blockStart = Carbon::parse("$date {$block['start']}");
             $blockEnd = Carbon::parse("$date {$block['end']}");
-            $slot = $blockStart->copy();
 
-            if ($blockStart->isToday()) {
-                $now = Carbon::now();
-                if ($slot->lt($now)) {
-                    $minutesSinceMidnight = $now->diffInMinutes($blockStart->copy()->startOfDay());
-                    $roundedMinutes = ceil($minutesSinceMidnight / 15) * 15;
-                    $slot = $blockStart->copy()->startOfDay()->addMinutes($roundedMinutes);
-                }
+            if ($isToday && $blockStart->lt($now)) {
+                $minutesSinceMidnight = $now->diffInMinutes($blockStart->copy()->startOfDay(), false);
+                $roundedMinutes = (int) ceil($minutesSinceMidnight / 15) * 15;
+                $slot = $blockStart->copy()->startOfDay()->addMinutes($roundedMinutes);
+            } else {
+                $slot = $blockStart->copy();
             }
 
             while ($slot->copy()->addMinutes($duration)->lte($blockEnd)) {
+                if ($isToday && $slot->lt($now)) {
+                    $slot->addMinutes(15);
+                    continue;
+                }
+
                 $slotEnd = $slot->copy()->addMinutes($duration);
 
                 $hasConflict = $booked->contains(function ($appt) use ($slot, $slotEnd) {

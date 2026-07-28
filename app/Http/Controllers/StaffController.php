@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Category;
 use App\Models\Staff;
 use App\Models\Person;
+use App\Support\SearchHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -15,15 +16,17 @@ class StaffController extends Controller
         $query = Staff::where('admin_id', $request->user()->id);
 
         if ($request->filled('name')) {
-            $query->whereHas('person', function ($q) use ($request) {
-                $term = $request->name;
-                $q->where('name', 'LIKE', "%{$term}%")
-                  ->orWhere('surname', 'LIKE', "%{$term}%");
+            $escaped = SearchHelper::likeContains($request->name);
+            $query->whereHas('person', function ($q) use ($escaped) {
+                $q->where(function ($q2) use ($escaped) {
+                    $q2->whereRaw('name LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [$escaped])
+                       ->orWhereRaw('surname LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [$escaped]);
+                });
             });
         }
 
         if ($request->filled('email')) {
-            $query->where('email', 'LIKE', '%' . $request->email . '%');
+            $query->whereRaw('email LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [SearchHelper::likeContains($request->email)]);
         }
 
         $allowedSorts = ['id', 'job_title', 'email', 'catagory_id', 'created_at', 'name'];

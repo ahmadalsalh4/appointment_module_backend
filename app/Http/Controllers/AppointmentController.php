@@ -261,7 +261,7 @@ class AppointmentController extends Controller
         }
 
         return DB::transaction(function () use ($validated, $startDate, $endDate, $request) {
-            DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $validated['staff_id']]);
+            if (DB::connection()->getDriverName() === 'pgsql') { DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $validated['staff_id']]); }
 
             $lockedStaff = Staff::where('id', $validated['staff_id'])->lockForUpdate()->first();
             if (!$lockedStaff) {
@@ -338,7 +338,7 @@ class AppointmentController extends Controller
         $serviceId = $validated['service_id'] ?? $appointment->service_id;
 
         return DB::transaction(function () use ($request, $appointment, $validated, $staffId, $serviceId) {
-            DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $staffId]);
+            if (DB::connection()->getDriverName() === 'pgsql') { DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $staffId]); }
 
             $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
             if (!$locked) {
@@ -469,7 +469,7 @@ class AppointmentController extends Controller
         $serviceId = $validated['service_id'] ?? $appointment->service_id;
 
         return DB::transaction(function () use ($request, $appointment, $validated, $staffId, $serviceId) {
-            DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $staffId]);
+            if (DB::connection()->getDriverName() === 'pgsql') { DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $staffId]); }
 
             $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
             if (!$locked) {
