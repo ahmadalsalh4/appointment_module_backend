@@ -20,10 +20,17 @@ return [
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
     // Override in .env (CORS_ALLOWED_ORIGINS) with comma-separated
-    // origins in production. The default below matches the local Vite
-    // dev server only.
-    'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'))))),
+    // origins in production. Includes local Vite dev server and the
+    // Netlify deployment (moved here from allowed_origins_patterns —
+    // it was a literal URL, not a regex, so it belonged here).
+    'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', env(
+        'CORS_ALLOWED_ORIGINS',
+        'http://localhost:5173,http://127.0.0.1:5173,https://astounding-blancmange-80c978.netlify.app'
+    ))))),
 
+    // Only use this for genuine regex matching (e.g. all Netlify preview
+    // deploy subdomains). Example, if you ever need it:
+    // 'allowed_origins_patterns' => ['#^https://.*--your-site\.netlify\.app$#'],
     'allowed_origins_patterns' => [],
 
     'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
@@ -35,6 +42,12 @@ return [
     // The frontend currently uses a Bearer token in localStorage and
     // never sends cookies. Keep this false to avoid extra CORS surface
     // until the migration to httpOnly cookies lands.
+    //
+    // NOTE: 'sanctum/csrf-cookie' is still in `paths` above. That route
+    // only matters for Sanctum's cookie-based SPA auth. If nothing in
+    // this app actually calls it, you can remove it from `paths`. If
+    // something *does* rely on it, supports_credentials must be `true`
+    // and allowed_origins must NOT contain '*' for it to work.
     'supports_credentials' => false,
 
 ];
