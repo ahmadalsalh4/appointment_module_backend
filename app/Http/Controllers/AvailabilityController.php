@@ -28,6 +28,7 @@ class AvailabilityController extends Controller
 
         $duration = $service->duration;
         $date = $validated['date'];
+        $tz = Staff::BUSINESS_TIMEZONE;
 
         $booked = Appointment::forStaff($validated['staff_id'])
             ->onDate($date)
@@ -35,12 +36,12 @@ class AvailabilityController extends Controller
             ->get(['start_date', 'end_date']);
 
         $availableSlots = [];
-        $isToday = Carbon::parse($date)->isToday();
-        $now = Carbon::now();
+        $isToday = Carbon::parse($date, $tz)->isToday();
+        $now = Carbon::now($tz);
 
         foreach (Staff::WORK_BLOCKS as $block) {
-            $blockStart = Carbon::parse("$date {$block['start']}");
-            $blockEnd = Carbon::parse("$date {$block['end']}");
+            $blockStart = Carbon::parse("$date {$block['start']}", $tz);
+            $blockEnd = Carbon::parse("$date {$block['end']}", $tz);
 
             if ($isToday && $blockStart->lt($now)) {
                 $minutesSinceMidnight = $now->diffInMinutes($blockStart->copy()->startOfDay(), false);
