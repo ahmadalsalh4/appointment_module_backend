@@ -313,34 +313,36 @@ class BackendFixesTest extends TestCase
         $this->assertSame('staff', $switch->json('role'));
     }
 
-    public function test_availability_excludes_slots_covered_by_previous_day_appointment()
+    public function test_availability_excludes_slots_covered_by_same_day_appointment()
     {
         $admin = $this->makeAdmin();
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Long Service', 'duration' => 30]);
+        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
 
         $tz = Staff::BUSINESS_TIMEZONE;
-        $yesterday = Carbon::now($tz)->addDay()->subDay()->format('Y-m-d');
-        $tomorrow = Carbon::now($tz)->addDay()->format('Y-m-d');
+        $target = Carbon::now($tz)->addDay()->format('Y-m-d');
 
         Appointment::create([
             'staff_id' => $staff->id,
             'customer_id' => $customer->id,
             'service_id' => $service->id,
-            'state_id' => Status::PENDING,
-            'start_date' => Carbon::parse("{$yesterday} 16:45:00", $tz),
-            'end_date'   => Carbon::parse("{$yesterday} 17:15:00", $tz),
+            'state_id' => Status::CONFIRMED,
+            'start_date' => Carbon::parse("{$target} 10:00:00", $tz),
+            'end_date'   => Carbon::parse("{$target} 10:30:00", $tz),
         ]);
 
-        $response = $this->getJson("/api/availability?staff_id={$staff->id}&service_id={$service->id}&date={$tomorrow}");
+        $response = $this->getJson("/api/availability?staff_id={$staff->id}&service_id={$service->id}&date={$target}");
 
         $response->assertStatus(200);
         $slots = $response->json('available_slots');
 
-        $this->assertNotContains('09:00', $slots, 'Morning slots should remain available; previous-day appointment does not span into the requested day.');
-        $this->assertNotContains('17:00', $slots, 'Late afternoon slots on the previous day must not leak into the requested day.');
+        $this->assertNotContains('10:00', $slots, '10:00 slot is covered by a same-day appointment.');
+        $this->assertNotContains('10:15', $slots, '10:15 slot is covered by a same-day appointment.');
+        $this->assertContains('09:00', $slots, '09:00 slot is before the appointment and must remain available.');
+        $this->assertContains('10:30', $slots, '10:30 slot is back-to-back with the appointment and must remain available.');
+        $this->assertContains('11:00', $slots, '11:00 slot is after the appointment and must remain available.');
     }
 
     public function test_availability_excludes_slots_covered_by_appointment_spanning_into_requested_day()
