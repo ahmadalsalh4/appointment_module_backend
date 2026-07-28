@@ -14,6 +14,18 @@ class StaffController extends Controller
     {
         $query = Staff::where('admin_id', $request->user()->id);
 
+        if ($request->filled('name')) {
+            $query->whereHas('person', function ($q) use ($request) {
+                $term = $request->name;
+                $q->where('name', 'LIKE', "%{$term}%")
+                  ->orWhere('surname', 'LIKE', "%{$term}%");
+            });
+        }
+
+        if ($request->filled('email')) {
+            $query->where('email', 'LIKE', '%' . $request->email . '%');
+        }
+
         $allowedSorts = ['id', 'job_title', 'email', 'catagory_id', 'created_at', 'name'];
         $sortBy = $request->get('sort_by', 'id');
         $sortOrder = strtolower($request->get('sort_order', 'asc')) === 'desc' ? 'desc' : 'asc';

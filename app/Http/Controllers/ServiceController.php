@@ -16,6 +16,10 @@ class ServiceController extends Controller
             $query->where('catagory_id', $request->catagory_id);
         }
 
+        if ($request->filled('name')) {
+            $query->where('name', 'LIKE', '%' . $request->name . '%');
+        }
+
         $allowedSorts = ['id', 'name', 'duration', 'catagory_id', 'created_at'];
         $sortBy = in_array($request->get('sort_by', 'name'), $allowedSorts, true) ? $request->get('sort_by', 'name') : 'name';
         $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true) ? strtolower($request->get('sort_order', 'asc')) : 'asc';

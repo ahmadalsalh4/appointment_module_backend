@@ -12,14 +12,20 @@ class CategoryController extends Controller
 {
     public function index(Request $request)
     {
+        $query = Category::query();
+
+        if ($request->filled('name')) {
+            $query->where('name', 'LIKE', '%' . $request->name . '%');
+        }
+
         $sortBy = in_array(strtolower($request->get('sort_by', 'name')), ['id', 'name', 'created_at'], true) ? strtolower($request->get('sort_by', 'name')) : 'name';
         $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true) ? strtolower($request->get('sort_order', 'asc')) : 'asc';
 
+        $query->orderBy($sortBy, $sortOrder);
+
         $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
 
-        return response()->json(
-            Category::orderBy($sortBy, $sortOrder)->paginate($perPage)
-        );
+        return response()->json($query->paginate($perPage));
     }
 
     public function store(Request $request)

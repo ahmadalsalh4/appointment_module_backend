@@ -96,6 +96,7 @@ API taban URL'si: `http://localhost:8000/api` (Laravel Valet/Herd kullanıyorsan
 | Müşteri | `ahmad@test.com` | `customer123` | — |
 | Müşteri | `elif@test.com` | `customer123` | — |
 | Müşteri | `burak@test.com` | `customer123` | — |
+| **Çoklu rol** | `multi@test.com` | `multi123` | Eğitim (hem müşteri hem personel — rol değiştirme panelini test etmek için) |
 
 ## API Uç Noktaları Özeti
 
