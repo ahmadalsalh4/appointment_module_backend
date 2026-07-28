@@ -544,21 +544,27 @@ class AppointmentController extends Controller
     }
 
     /**
-     * Yardımcı: Randevunun personelin çalışma saatleri içinde olup olmadığını kontrol eder
+     * Yardımcı: Randevunun personelin çalışma saatleri içinde olup olmadığını kontrol eder.
+     * Çalışma saatleri BUSINESS_TIMEZONE (Europe/Istanbul) içinde yorumlanır;
+     * gelen datetime hangi timezone'da olursa olsun önce bu zona dönüştürülür.
      */
     private function isWithinWorkingHours(Carbon $startDate, Carbon $endDate): bool
     {
-        if ($startDate->toDateString() !== $endDate->toDateString()) {
+        $tz = Staff::BUSINESS_TIMEZONE;
+        $localStart = $startDate->copy()->setTimezone($tz);
+        $localEnd = $endDate->copy()->setTimezone($tz);
+
+        if ($localStart->toDateString() !== $localEnd->toDateString()) {
             return false;
         }
 
-        $dateStr = $startDate->toDateString();
+        $dateStr = $localStart->toDateString();
 
         foreach (Staff::WORK_BLOCKS as $block) {
-            $blockStart = Carbon::parse("{$dateStr} {$block['start']}");
-            $blockEnd = Carbon::parse("{$dateStr} {$block['end']}");
+            $blockStart = Carbon::parse("{$dateStr} {$block['start']}", $tz);
+            $blockEnd = Carbon::parse("{$dateStr} {$block['end']}", $tz);
 
-            if ($startDate->gte($blockStart) && $endDate->lte($blockEnd)) {
+            if ($localStart->gte($blockStart) && $localEnd->lte($blockEnd)) {
                 return true;
             }
         }

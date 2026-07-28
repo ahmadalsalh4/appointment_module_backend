@@ -20,11 +20,14 @@ class Staff extends Authenticatable
         'password' => 'hashed',
     ];
 
-    // Sabit mesai blokları — öğle arası (12:00-13:00) otomatik hariç kalır
+    // Sabit mesai blokları — öğle arası (12:00-13:00) otomatik hariç kalır.
+    // Saatler BUSINESS_TIMEZONE içinde yorumlanır (Türkiye saati).
     public const WORK_BLOCKS = [
         ['start' => '09:00', 'end' => '12:00'],
         ['start' => '13:00', 'end' => '17:00'],
     ];
+
+    public const BUSINESS_TIMEZONE = 'Europe/Istanbul';
 
     public function person()
     {
