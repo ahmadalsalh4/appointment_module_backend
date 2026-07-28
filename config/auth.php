@@ -1,4 +1,9 @@
 <?php
+
+use App\Models\Admin;
+use App\Models\Customer;
+use App\Models\Staff;
+
 return [
 
     /*
@@ -13,8 +18,13 @@ return [
     */
 
     'defaults' => [
-        'guard' => env('AUTH_GUARD', 'customer'),
-        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
+        // NOTE: Default guard is intentionally left unset ('web') so that
+        // any code that calls auth()->user() without specifying a guard
+        // fails loudly instead of silently using the customer provider.
+        // Route groups below always specify auth:customer, auth:staff or
+        // auth:admin explicitly.
+        'guard' => env('AUTH_GUARD', 'web'),
+        'passwords' => env('AUTH_PASSWORD_BROKER', 'customers'),
     ],
 
     /*
@@ -35,21 +45,21 @@ return [
     */
 
     'guards' => [
-    'customer' => [
-        'driver' => 'sanctum',
-        'provider' => 'customers',
-    ],
+        'customer' => [
+            'driver' => 'sanctum',
+            'provider' => 'customers',
+        ],
 
-    'staff' => [
-        'driver' => 'sanctum',
-        'provider' => 'staff',
-    ],
+        'staff' => [
+            'driver' => 'sanctum',
+            'provider' => 'staff',
+        ],
 
-    'admin' => [
-        'driver' => 'sanctum',
-        'provider' => 'admin',
+        'admin' => [
+            'driver' => 'sanctum',
+            'provider' => 'admin',
+        ],
     ],
-],
 
     /*
     |--------------------------------------------------------------------------
@@ -69,27 +79,26 @@ return [
     */
 
     'providers' => [
-    'customers' => [
-        'driver' => 'eloquent',
-        'model' => App\Models\Customer::class,
+        'customers' => [
+            'driver' => 'eloquent',
+            'model' => Customer::class,
+        ],
+
+        'staff' => [
+            'driver' => 'eloquent',
+            'model' => Staff::class,
+        ],
+
+        'admin' => [
+            'driver' => 'eloquent',
+            'model' => Admin::class,
+        ],
     ],
 
-    'staff' => [
-        'driver' => 'eloquent',
-        'model' => App\Models\Staff::class,
-    ],
-
-    'admin' => [
-        'driver' => 'eloquent',
-        'model' => App\Models\Admin::class,
-    ],
-],
-
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
-
+    // 'users' => [
+    //     'driver' => 'database',
+    //     'table' => 'users',
+    // ],
 
     /*
     |--------------------------------------------------------------------------

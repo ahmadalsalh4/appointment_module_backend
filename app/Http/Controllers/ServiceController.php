@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\Staff;
+use App\Models\Status;
 use App\Support\SearchHelper;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ServiceController extends Controller
 {
@@ -18,7 +21,7 @@ class ServiceController extends Controller
         }
 
         if ($request->filled('name')) {
-            $query->whereRaw('name LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [SearchHelper::likeContains($request->name)]);
+            $query->whereRaw('name LIKE ? '.SearchHelper::ESCAPE_CLAUSE, [SearchHelper::likeContains($request->name)]);
         }
 
         $allowedSorts = ['id', 'name', 'duration', 'catagory_id', 'created_at'];
@@ -35,8 +38,14 @@ class ServiceController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
+            // NOTE: `catagory_id` typo — see Service model.
             'catagory_id' => 'required|exists:categories,id',
-            'name' => 'required|string|max:100',
+            'name' => [
+                'required',
+                'string',
+                'max:100',
+                Rule::unique('services', 'name')->where('catagory_id', $request->input('catagory_id')),
+            ],
             'duration' => 'required|integer|min:5|max:240',
         ]);
 
@@ -52,9 +61,19 @@ class ServiceController extends Controller
 
     public function update(Request $request, Service $service)
     {
+        $catagoryId = $request->input('catagory_id', $service->catagory_id);
+
         $validated = $request->validate([
+            // NOTE: `catagory_id` typo — see Service model.
             'catagory_id' => 'sometimes|exists:categories,id',
-            'name' => 'sometimes|string|max:100',
+            'name' => [
+                'sometimes',
+                'string',
+                'max:100',
+                Rule::unique('services', 'name')
+                    ->where('catagory_id', $catagoryId)
+                    ->ignore($service->id),
+            ],
             'duration' => 'sometimes|integer|min:5|max:240',
         ]);
 
@@ -65,8 +84,8 @@ class ServiceController extends Controller
 
     public function destroy(Service $service)
     {
-        $hasActiveAppointments = \App\Models\Appointment::where('service_id', $service->id)
-            ->whereNotIn('state_id', [\App\Models\Status::COMPLETED, \App\Models\Status::CANCELLED])
+        $hasActiveAppointments = Appointment::where('service_id', $service->id)
+            ->whereNotIn('state_id', [Status::COMPLETED, Status::CANCELLED])
             ->exists();
 
         if ($hasActiveAppointments) {
@@ -79,6 +98,7 @@ class ServiceController extends Controller
 
         return response()->json(['message' => 'Hizmet silindi']);
     }
+
     public function getAvailableStaff(Service $service, Request $request)
     {
         $query = Staff::where('catagory_id', $service->catagory_id)->with('person');

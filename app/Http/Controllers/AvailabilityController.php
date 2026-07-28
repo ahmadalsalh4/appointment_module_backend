@@ -6,8 +6,8 @@ use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Status;
-use Illuminate\Http\Request;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
 
 class AvailabilityController extends Controller
 {
@@ -31,17 +31,24 @@ class AvailabilityController extends Controller
         $tz = Staff::BUSINESS_TIMEZONE;
 
         $dayStart = Carbon::parse("$date 00:00:00", $tz);
-        $dayEnd = Carbon::parse("$date 23:59:59.999999", $tz);
+        // MySQL DATETIME (without fractional seconds) silently drops
+        // sub-second precision, so .999999 would be truncated and the
+        // boundary check could miss an appointment ending at 23:59:59.
+        $dayEnd = Carbon::parse("$date 23:59:59", $tz);
 
         $booked = Appointment::forStaff($validated['staff_id'])
-            ->where('state_id', '!=', Status::CANCELLED)
+            ->whereNotIn('state_id', [Status::COMPLETED, Status::CANCELLED])
             ->where('start_date', '<', $dayEnd)
             ->where('end_date', '>', $dayStart)
             ->get(['start_date', 'end_date']);
 
         $availableSlots = [];
-        $isToday = Carbon::parse($date, $tz)->isToday();
+        // Compare against the business-timezone "today", not the server's
+        // default timezone. isToday() without a timezone argument uses
+        // now()->toDateString(), which can be off by a day for a UTC
+        // server serving a Europe/Istanbul business.
         $now = Carbon::now($tz);
+        $isToday = $date === $now->toDateString();
 
         foreach (Staff::WORK_BLOCKS as $block) {
             $blockStart = Carbon::parse("$date {$block['start']}", $tz);
@@ -58,6 +65,7 @@ class AvailabilityController extends Controller
             while ($slot->copy()->addMinutes($duration)->lte($blockEnd)) {
                 if ($isToday && $slot->lt($now)) {
                     $slot->addMinutes(15);
+
                     continue;
                 }
 
@@ -67,7 +75,7 @@ class AvailabilityController extends Controller
                     return $slot->lt($appt->end_date) && $slotEnd->gt($appt->start_date);
                 });
 
-                if (!$hasConflict) {
+                if (! $hasConflict) {
                     $availableSlots[] = $slot->format('H:i');
                 }
 

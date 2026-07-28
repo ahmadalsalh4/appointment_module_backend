@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Customer;
 use App\Models\Person;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class CustomerSeeder extends Seeder
 {
@@ -25,7 +26,7 @@ class CustomerSeeder extends Seeder
                 ['email' => $c['email']],
                 [
                     'person_id' => $person->id,
-                    'password' => 'customer123',
+                    'password' => Hash::make('customer123'),
                 ],
             );
         }

@@ -11,8 +11,10 @@ use App\Models\Service as ServiceModel;
 use App\Models\Staff;
 use App\Models\Status;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class BackendFixesTest extends TestCase
@@ -45,7 +47,7 @@ class BackendFixesTest extends TestCase
 
     protected function makeStaff(Admin $admin, Category $category, string $email = 'staff@test.com'): Staff
     {
-        return Staff::firstOrCreate(
+        $staff = Staff::firstOrCreate(
             ['email' => $email],
             [
                 'person_id' => Person::create([
@@ -53,12 +55,16 @@ class BackendFixesTest extends TestCase
                     'surname' => 'One',
                     'phone_number' => uniqid('phone-staff-', true),
                 ])->id,
-                'admin_id' => $admin->id,
                 'job_title' => 'Barber',
                 'catagory_id' => $category->id,
                 'password' => 'password',
             ],
         );
+        // admin_id is intentionally NOT in Staff::$fillable; mirror the
+        // production StaffController::store pattern of forceFill + save.
+        $staff->forceFill(['admin_id' => $admin->id])->save();
+
+        return $staff;
     }
 
     protected function makeCustomer(string $email = 'customer@test.com'): Customer
@@ -201,7 +207,7 @@ class BackendFixesTest extends TestCase
         ServiceModel::create(['catagory_id' => $category->id, 'name' => '10_off', 'duration' => 30]);
 
         $exact = $this->actingAs($admin, 'admin')
-            ->getJson('/api/services?name=' . urlencode('10%off'))
+            ->getJson('/api/services?name='.urlencode('10%off'))
             ->assertStatus(200);
 
         $names = array_column($exact->json('data'), 'name');
@@ -217,7 +223,7 @@ class BackendFixesTest extends TestCase
         Category::create(['name' => 'AxB']);
 
         $resp = $this->actingAs($admin, 'admin')
-            ->getJson('/api/categories?name=' . urlencode('A_B'))
+            ->getJson('/api/categories?name='.urlencode('A_B'))
             ->assertStatus(200);
 
         $names = array_column($resp->json('data'), 'name');
@@ -231,24 +237,24 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
 
         $person = Person::create(['name' => 'Ayşe', 'surname' => 'Yılmaz', 'phone_number' => uniqid('p-', true)]);
-        Staff::create([
+        $ayse = Staff::create([
             'person_id' => $person->id,
-            'admin_id' => $admin->id,
             'job_title' => 'Barber',
             'catagory_id' => $category->id,
             'email' => 'ayse@test.com',
             'password' => 'password',
         ]);
+        $ayse->forceFill(['admin_id' => $admin->id])->save();
 
         $unrelated = Person::create(['name' => 'Mehmet', 'surname' => 'Yılmaz', 'phone_number' => uniqid('p-', true)]);
-        Staff::create([
+        $mehmet = Staff::create([
             'person_id' => $unrelated->id,
-            'admin_id' => $admin->id,
             'job_title' => 'Barber',
             'catagory_id' => $category->id,
             'email' => 'mehmet@test.com',
             'password' => 'password',
         ]);
+        $mehmet->forceFill(['admin_id' => $admin->id])->save();
 
         $resp = $this->actingAs($admin, 'admin')
             ->getJson('/api/staff-members?name=' . urlencode('Yılmaz'))
@@ -330,7 +336,7 @@ class BackendFixesTest extends TestCase
             'service_id' => $service->id,
             'state_id' => Status::CONFIRMED,
             'start_date' => Carbon::parse("{$target} 10:00:00", $tz),
-            'end_date'   => Carbon::parse("{$target} 10:30:00", $tz),
+            'end_date' => Carbon::parse("{$target} 10:30:00", $tz),
         ]);
 
         $response = $this->getJson("/api/availability?staff_id={$staff->id}&service_id={$service->id}&date={$target}");
@@ -363,7 +369,7 @@ class BackendFixesTest extends TestCase
             'service_id' => $service->id,
             'state_id' => Status::CONFIRMED,
             'start_date' => Carbon::parse("{$yesterday} 16:45:00", $tz),
-            'end_date'   => Carbon::parse("{$target} 09:15:00", $tz),
+            'end_date' => Carbon::parse("{$target} 09:15:00", $tz),
         ]);
 
         $response = $this->getJson("/api/availability?staff_id={$staff->id}&service_id={$service->id}&date={$target}");
@@ -373,5 +379,254 @@ class BackendFixesTest extends TestCase
 
         $this->assertNotContains('09:00', $slots, '09:00 slot is covered by a previous-day appointment that ends at 09:15 on the requested day.');
         $this->assertContains('10:00', $slots, 'After the previous-day appointment ends, slots should be available again.');
+    }
+
+    public function test_availability_treats_completed_appointments_as_free()
+    {
+        $admin = $this->makeAdmin();
+        $category = Category::create(['name' => 'Haircuts']);
+        $staff = $this->makeStaff($admin, $category);
+        $customer = $this->makeCustomer();
+        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+
+        $tz = Staff::BUSINESS_TIMEZONE;
+        $target = Carbon::now($tz)->addDay()->format('Y-m-d');
+
+        Appointment::create([
+            'staff_id' => $staff->id,
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'state_id' => Status::COMPLETED,
+            'start_date' => Carbon::parse("{$target} 10:00:00", $tz),
+            'end_date' => Carbon::parse("{$target} 10:30:00", $tz),
+        ]);
+
+        $response = $this->getJson("/api/availability?staff_id={$staff->id}&service_id={$service->id}&date={$target}");
+
+        $response->assertStatus(200);
+        $slots = $response->json('available_slots');
+
+        $this->assertContains('10:00', $slots, 'Completed appointment should not block the 10:00 slot.');
+        $this->assertContains('10:15', $slots, 'Completed appointment should not block the 10:15 slot.');
+        $this->assertContains('10:30', $slots, 'Completed appointment should not block the 10:30 slot.');
+    }
+
+    public function test_booking_over_completed_appointment_succeeds()
+    {
+        $admin = $this->makeAdmin();
+        $category = Category::create(['name' => 'Haircuts']);
+        $staff = $this->makeStaff($admin, $category);
+        $customer = $this->makeCustomer();
+        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+
+        $tz = Staff::BUSINESS_TIMEZONE;
+        $target = Carbon::now($tz)->addDay()->format('Y-m-d');
+
+        Appointment::create([
+            'staff_id' => $staff->id,
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'state_id' => Status::COMPLETED,
+            'start_date' => Carbon::parse("{$target} 10:00:00", $tz),
+            'end_date' => Carbon::parse("{$target} 10:30:00", $tz),
+        ]);
+
+        $response = $this->actingAs($customer, 'customer')->postJson('/api/appointments', [
+            'staff_id' => $staff->id,
+            'service_id' => $service->id,
+            'start_date' => "{$target} 10:00:00",
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonFragment(['staff_id' => $staff->id, 'state_id' => Status::PENDING]);
+    }
+
+    public function test_duplicate_start_date_raises_unique_constraint_violation()
+    {
+        $admin = $this->makeAdmin();
+        $category = Category::create(['name' => 'Haircuts']);
+        $staff = $this->makeStaff($admin, $category);
+        $customer = $this->makeCustomer();
+        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+
+        $tz = Staff::BUSINESS_TIMEZONE;
+        $start = Carbon::now($tz)->addDay()->setTime(10, 0, 0);
+
+        Appointment::create([
+            'staff_id' => $staff->id,
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'state_id' => Status::CONFIRMED,
+            'start_date' => $start,
+            'end_date' => $start->copy()->addMinutes(30),
+        ]);
+
+        // Bypass the in-app scope to test the DB constraint itself.
+        $this->expectException(QueryException::class);
+        Appointment::create([
+            'staff_id' => $staff->id,
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'state_id' => Status::PENDING,
+            'start_date' => $start,
+            'end_date' => $start->copy()->addMinutes(30),
+        ]);
+    }
+
+    public function test_admin_cannot_edit_completed_appointment()
+    {
+        $admin = $this->makeAdmin();
+        $category = Category::create(['name' => 'Haircuts']);
+        $staff = $this->makeStaff($admin, $category);
+        $customer = $this->makeCustomer();
+        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+
+        $tz = Staff::BUSINESS_TIMEZONE;
+        $start = Carbon::now($tz)->addDay()->setTime(10, 0, 0);
+
+        $appointment = Appointment::create([
+            'staff_id' => $staff->id,
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'state_id' => Status::COMPLETED,
+            'start_date' => $start,
+            'end_date' => $start->copy()->addMinutes(30),
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')->putJson("/api/appointments/{$appointment->id}", [
+            'state_id' => Status::PENDING,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_admin_cannot_edit_cancelled_appointment()
+    {
+        $admin = $this->makeAdmin();
+        $category = Category::create(['name' => 'Haircuts']);
+        $staff = $this->makeStaff($admin, $category);
+        $customer = $this->makeCustomer();
+        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+
+        $tz = Staff::BUSINESS_TIMEZONE;
+        $start = Carbon::now($tz)->addDay()->setTime(10, 0, 0);
+
+        $appointment = Appointment::create([
+            'staff_id' => $staff->id,
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'state_id' => Status::CANCELLED,
+            'start_date' => $start,
+            'end_date' => $start->copy()->addMinutes(30),
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')->putJson("/api/appointments/{$appointment->id}", [
+            'state_id' => Status::PENDING,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_duplicate_category_name_is_rejected()
+    {
+        $admin = $this->makeAdmin();
+        Category::create(['name' => 'Haircuts']);
+
+        $response = $this->actingAs($admin, 'admin')->postJson('/api/categories', [
+            'name' => 'Haircuts',
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_duplicate_service_name_within_category_is_rejected()
+    {
+        $admin = $this->makeAdmin();
+        $category = Category::create(['name' => 'Haircuts']);
+        ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Cut', 'duration' => 30]);
+
+        $response = $this->actingAs($admin, 'admin')->postJson('/api/services', [
+            'catagory_id' => $category->id,
+            'name' => 'Cut',
+            'duration' => 30,
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_registration_rejects_email_already_used_by_staff()
+    {
+        $admin = $this->makeAdmin();
+        $category = Category::create(['name' => 'Haircuts']);
+        $this->makeStaff($admin, $category, 'shared@test.com');
+
+        $response = $this->postJson('/api/customer/register', [
+            'name' => 'Test',
+            'surname' => 'User',
+            'email' => 'shared@test.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_password_minimum_length_is_8()
+    {
+        $response = $this->postJson('/api/customer/register', [
+            'name' => 'Test',
+            'surname' => 'User',
+            'email' => 'newcust@test.com',
+            'password' => 'short',
+            'password_confirmation' => 'short',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['password']);
+    }
+
+    public function test_switch_role_verifies_against_target_password()
+    {
+        $admin = $this->makeAdmin();
+        $category = Category::create(['name' => 'Haircuts']);
+        $person = Person::create(['name' => 'Multi', 'surname' => 'Role', 'phone_number' => uniqid('p-', true)]);
+
+        // Same email, different passwords across roles.
+        Customer::create([
+            'person_id' => $person->id,
+            'email' => 'multi-pw@test.com',
+            'password' => Hash::make('customer-pass'),
+        ]);
+        Staff::create([
+            'person_id' => $person->id,
+            'email' => 'multi-pw@test.com',
+            'job_title' => 'X',
+            'admin_id' => $admin->id,
+            'catagory_id' => $category->id,
+            'password' => Hash::make('staff-pass'),
+        ]);
+
+        // Log in as customer first.
+        $login = $this->postJson('/api/login', [
+            'email' => 'multi-pw@test.com',
+            'password' => 'customer-pass',
+        ])->assertStatus(200);
+        $token = $login->json('token');
+
+        // Switching to staff with the CUSTOMER password should fail.
+        $badSwitch = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson('/api/switch-role', [
+                'role' => 'staff',
+                'password' => 'customer-pass',
+            ]);
+        $badSwitch->assertStatus(422);
+
+        // ...and with the STAFF password should succeed.
+        $okSwitch = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson('/api/switch-role', [
+                'role' => 'staff',
+                'password' => 'staff-pass',
+            ]);
+        $okSwitch->assertStatus(200)->assertJsonFragment(['role' => 'staff']);
     }
 }

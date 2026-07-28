@@ -23,9 +23,9 @@ class SearchHelper
     public static function likeEscape(string $value): string
     {
         return strtr($value, [
-            self::ESCAPE_CHAR => self::ESCAPE_CHAR . self::ESCAPE_CHAR,
-            '%' => self::ESCAPE_CHAR . '%',
-            '_' => self::ESCAPE_CHAR . '_',
+            self::ESCAPE_CHAR => self::ESCAPE_CHAR.self::ESCAPE_CHAR,
+            '%' => self::ESCAPE_CHAR.'%',
+            '_' => self::ESCAPE_CHAR.'_',
         ]);
     }
 
@@ -35,7 +35,7 @@ class SearchHelper
      */
     public static function likeContains(string $value): string
     {
-        return '%' . self::likeEscape($value) . '%';
+        return '%'.self::likeEscape($value).'%';
     }
 
     /**

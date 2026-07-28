@@ -8,14 +8,16 @@ use App\Models\Customer;
 use App\Models\Person;
 use App\Models\Staff;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class MultiRoleSeeder extends Seeder
 {
     public function run(): void
     {
         $admin = Admin::first();
-        if (!$admin) {
+        if (! $admin) {
             $this->command->warn('Admin bulunamadı, MultiRoleSeeder atlanıyor.');
+
             return;
         }
 
@@ -35,7 +37,7 @@ class MultiRoleSeeder extends Seeder
             ['email' => $email],
             [
                 'person_id' => $person->id,
-                'password' => $password,
+                'password' => Hash::make($password),
             ],
         );
 
@@ -46,8 +48,9 @@ class MultiRoleSeeder extends Seeder
                 [
                     'person_id' => $person->id,
                     'job_title' => 'Çoklu Rol Kullanıcısı',
-                    'password' => $password,
+                    'password' => Hash::make($password),
                     'admin_id' => $admin->id,
+                    // NOTE: `catagory_id` typo — see Staff model.
                     'catagory_id' => $category->id,
                 ],
             );

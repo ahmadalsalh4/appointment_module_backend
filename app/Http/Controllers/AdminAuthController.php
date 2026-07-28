@@ -11,6 +11,7 @@ class AdminAuthController extends Controller
         if ($request->user()->currentAccessToken()) {
             $request->user()->currentAccessToken()->delete();
         }
+
         return response()->json(['message' => 'Çıkış yapıldı']);
     }
 }

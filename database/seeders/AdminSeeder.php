@@ -2,9 +2,10 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\Person;
 use App\Models\Admin;
+use App\Models\Person;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class AdminSeeder extends Seeder
 {
@@ -23,7 +24,10 @@ class AdminSeeder extends Seeder
             ['email' => 'admin@test.com'],
             [
                 'person_id' => $person->id,
-                'password' => 'admin123', // Model'de 'hashed' cast var, otomatik hashlenir
+                // Explicit Hash::make instead of relying on the 'hashed'
+                // cast (works, but the cast hides the value from log
+                // diffs and seeders — being explicit is easier to audit).
+                'password' => Hash::make('admin123'),
             ]
         );
     }

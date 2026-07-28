@@ -9,7 +9,11 @@ class EnsureUserModel
 {
     public function handle(Request $request, Closure $next, string $modelClass): mixed
     {
-        if (!$request->user() || !($request->user() instanceof $modelClass)) {
+        if (! class_exists($modelClass)) {
+            return response()->json(['message' => 'Bu işlem için yetkiniz yok'], 403);
+        }
+
+        if (! $request->user() || ! ($request->user() instanceof $modelClass)) {
             return response()->json(['message' => 'Bu işlem için yetkiniz yok'], 403);
         }
 

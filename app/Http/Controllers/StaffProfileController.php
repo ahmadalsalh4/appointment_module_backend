@@ -21,7 +21,7 @@ class StaffProfileController extends Controller
 
         $validated = $request->validate([
             'email' => ['sometimes', 'email', Rule::unique('staff', 'email')->ignore($staff->id)],
-            'password' => ['sometimes', 'string', 'min:6', 'confirmed'],
+            'password' => ['sometimes', 'string', 'min:8', 'confirmed'],
             'job_title' => ['sometimes', 'string', 'max:100'],
             'catagory_id' => ['nullable', 'exists:categories,id'],
             'name' => ['sometimes', 'string', 'max:100'],
@@ -31,12 +31,12 @@ class StaffProfileController extends Controller
 
         DB::transaction(function () use ($validated, $staff) {
             $staffData = array_intersect_key($validated, array_flip(['email', 'password', 'job_title', 'catagory_id']));
-            if (!empty($staffData)) {
+            if (! empty($staffData)) {
                 $staff->update($staffData);
             }
 
             $personData = array_intersect_key($validated, array_flip(['name', 'surname', 'phone_number']));
-            if (!empty($personData) && $staff->person) {
+            if (! empty($personData) && $staff->person) {
                 $staff->person->update($personData);
             }
         });

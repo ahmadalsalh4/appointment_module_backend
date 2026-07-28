@@ -11,6 +11,7 @@ class AdminProfileController extends Controller
     public function show(Request $request)
     {
         $admin = $request->user();
+
         return response()->json($admin->load('person'));
     }
 
@@ -20,7 +21,7 @@ class AdminProfileController extends Controller
 
         $validated = $request->validate([
             'email' => ['sometimes', 'email', Rule::unique('admin', 'email')->ignore($admin->id)],
-            'password' => ['sometimes', 'string', 'min:6', 'confirmed'],
+            'password' => ['sometimes', 'string', 'min:8', 'confirmed'],
             'name' => ['sometimes', 'string', 'max:100'],
             'surname' => ['sometimes', 'string', 'max:100'],
             'phone_number' => ['nullable', 'string', 'max:20'],
@@ -28,12 +29,12 @@ class AdminProfileController extends Controller
 
         DB::transaction(function () use ($validated, $admin) {
             $adminData = array_intersect_key($validated, array_flip(['email', 'password']));
-            if (!empty($adminData)) {
+            if (! empty($adminData)) {
                 $admin->update($adminData);
             }
 
             $personData = array_intersect_key($validated, array_flip(['name', 'surname', 'phone_number']));
-            if (!empty($personData) && $admin->person) {
+            if (! empty($personData) && $admin->person) {
                 $admin->person->update($personData);
             }
         });

@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Appointment;
 use App\Models\Category;
-use App\Models\Staff;
 use App\Models\Person;
+use App\Models\Staff;
+use App\Models\Status;
 use App\Support\SearchHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class StaffController extends Controller
 {
@@ -19,28 +22,28 @@ class StaffController extends Controller
             $escaped = SearchHelper::likeContains($request->name);
             $query->whereHas('person', function ($q) use ($escaped) {
                 $q->where(function ($q2) use ($escaped) {
-                    $q2->whereRaw('name LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [$escaped])
-                       ->orWhereRaw('surname LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [$escaped]);
+                    $q2->whereRaw('name LIKE ? '.SearchHelper::ESCAPE_CLAUSE, [$escaped])
+                        ->orWhereRaw('surname LIKE ? '.SearchHelper::ESCAPE_CLAUSE, [$escaped]);
                 });
             });
         }
 
         if ($request->filled('email')) {
-            $query->whereRaw('email LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [SearchHelper::likeContains($request->email)]);
+            $query->whereRaw('email LIKE ? '.SearchHelper::ESCAPE_CLAUSE, [SearchHelper::likeContains($request->email)]);
         }
 
         $allowedSorts = ['id', 'job_title', 'email', 'catagory_id', 'created_at', 'name'];
         $sortBy = $request->get('sort_by', 'id');
         $sortOrder = strtolower($request->get('sort_order', 'asc')) === 'desc' ? 'desc' : 'asc';
 
-        if (!in_array($sortBy, $allowedSorts, true)) {
+        if (! in_array($sortBy, $allowedSorts, true)) {
             $sortBy = 'id';
         }
 
         if ($sortBy === 'name') {
             $query->join('persons', 'staff.person_id', '=', 'persons.id')
-                  ->orderBy('persons.name', $sortOrder)
-                  ->select('staff.*');
+                ->orderBy('persons.name', $sortOrder)
+                ->select('staff.*');
         } else {
             $query->orderBy($sortBy, $sortOrder);
         }
@@ -59,8 +62,9 @@ class StaffController extends Controller
             'surname' => 'required|string|max:100',
             'phone_number' => 'nullable|string|max:20',
             'job_title' => 'required|string|max:100',
-            'email' => 'required|email|unique:staff,email',
-            'password' => 'required|string|min:6|confirmed',
+            'email' => ['required', 'email', Rule::unique('staff', 'email')],
+            'password' => 'required|string|min:8|confirmed',
+            // NOTE: `catagory_id` typo — see Staff model.
             'catagory_id' => 'nullable|exists:categories,id',
         ]);
 
@@ -71,14 +75,20 @@ class StaffController extends Controller
                 'phone_number' => $validated['phone_number'] ?? null,
             ]);
 
-            return Staff::create([
+            // Create the staff record with the user-controllable fields
+            // only, then forceFill() the admin_id. We use forceFill +
+            // save so admin_id stays out of $fillable (defense in depth
+            // against a future form field exposing it).
+            $staff = Staff::create([
                 'person_id' => $person->id,
                 'job_title' => $validated['job_title'],
                 'email' => $validated['email'],
                 'password' => $validated['password'],
-                'admin_id' => $request->user()->id,
                 'catagory_id' => $validated['catagory_id'] ?? null,
             ]);
+            $staff->forceFill(['admin_id' => $request->user()->id])->save();
+
+            return $staff;
         });
 
         return response()->json($staff->load(['person', 'category']), 201);
@@ -101,22 +111,23 @@ class StaffController extends Controller
 
         $validated = $request->validate([
             'job_title' => 'sometimes|string|max:100',
-            'email' => 'sometimes|email|unique:staff,email,' . $staff_member->id,
+            'email' => ['sometimes', 'email', Rule::unique('staff', 'email')->ignore($staff_member->id)],
             'name' => 'sometimes|string|max:100',
             'surname' => 'sometimes|string|max:100',
             'phone_number' => 'nullable|string|max:20',
+            // NOTE: `catagory_id` typo — see Staff model.
             'catagory_id' => 'nullable|exists:categories,id',
-            'password' => 'sometimes|string|min:6|confirmed',
+            'password' => 'sometimes|string|min:8|confirmed',
         ]);
 
         DB::transaction(function () use ($validated, $staff_member) {
             $staffData = array_intersect_key($validated, array_flip(['job_title', 'email', 'catagory_id', 'password']));
-            if (!empty($staffData)) {
+            if (! empty($staffData)) {
                 $staff_member->update($staffData);
             }
 
             $personData = array_intersect_key($validated, array_flip(['name', 'surname', 'phone_number']));
-            if (!empty($personData) && $staff_member->person) {
+            if (! empty($personData) && $staff_member->person) {
                 $staff_member->person->update($personData);
             }
         });
@@ -130,8 +141,8 @@ class StaffController extends Controller
             return response()->json(['message' => 'Bu personeli silme yetkiniz yok'], 403);
         }
 
-        $hasActiveAppointments = \App\Models\Appointment::where('staff_id', $staff_member->id)
-            ->whereNotIn('state_id', [\App\Models\Status::COMPLETED, \App\Models\Status::CANCELLED])
+        $hasActiveAppointments = Appointment::where('staff_id', $staff_member->id)
+            ->whereNotIn('state_id', [Status::COMPLETED, Status::CANCELLED])
             ->exists();
 
         if ($hasActiveAppointments) {
@@ -141,6 +152,7 @@ class StaffController extends Controller
         }
 
         $staff_member->delete();
+
         return response()->json(['message' => 'Personel silindi']);
     }
 

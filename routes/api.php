@@ -1,18 +1,18 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\CustomerAuthController;
-use App\Http\Controllers\StaffAuthController;
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AdminProfileController;
-use App\Http\Controllers\CategoryController;
-use App\Http\Controllers\ServiceController;
-use App\Http\Controllers\StaffController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AvailabilityController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\CustomerAuthController;
 use App\Http\Controllers\CustomerProfileController;
+use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\StaffAuthController;
+use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StaffProfileController;
 use App\Http\Controllers\UnifiedAuthController;
+use Illuminate\Support\Facades\Route;
 
 // ============ BİRLEŞİK GİRİŞ (herkese açık) ============
 Route::post('/login', [UnifiedAuthController::class, 'login'])->middleware('throttle:10,1');

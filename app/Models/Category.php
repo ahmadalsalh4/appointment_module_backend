@@ -15,11 +15,13 @@ class Category extends Model
 
     public function services()
     {
+        // NOTE: `catagory_id` typo — see Service model.
         return $this->hasMany(Service::class, 'catagory_id');
     }
-    
+
     public function staff()
     {
+        // NOTE: `catagory_id` typo — see Service model.
         return $this->hasMany(Staff::class, 'catagory_id');
     }
 }

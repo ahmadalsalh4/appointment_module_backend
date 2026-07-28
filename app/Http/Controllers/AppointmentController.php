@@ -7,8 +7,9 @@ use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Status;
-use Illuminate\Http\Request;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class AppointmentController extends Controller
@@ -27,7 +28,7 @@ class AppointmentController extends Controller
 
         if ($request->filled('tab')) {
             $validTabs = ['upcoming', 'pending', 'completed', 'cancelled'];
-            if (!in_array($request->tab, $validTabs, true)) {
+            if (! in_array($request->tab, $validTabs, true)) {
                 return response()->json(['message' => 'Geçersiz tab değeri. Kullanılabilecek değerler: upcoming, pending, completed, cancelled.'], 422);
             }
             $query->tab($request->tab);
@@ -74,7 +75,7 @@ class AppointmentController extends Controller
 
         if ($request->filled('tab')) {
             $validTabs = ['upcoming', 'pending', 'completed', 'cancelled'];
-            if (!in_array($request->tab, $validTabs, true)) {
+            if (! in_array($request->tab, $validTabs, true)) {
                 return response()->json(['message' => 'Geçersiz tab değeri. Kullanılabilecek değerler: upcoming, pending, completed, cancelled.'], 422);
             }
             $query->tab($request->tab);
@@ -119,7 +120,7 @@ class AppointmentController extends Controller
 
         if ($request->filled('tab')) {
             $validTabs = ['upcoming', 'pending', 'completed', 'cancelled'];
-            if (!in_array($request->tab, $validTabs, true)) {
+            if (! in_array($request->tab, $validTabs, true)) {
                 return response()->json(['message' => 'Geçersiz tab değeri. Kullanılabilecek değerler: upcoming, pending, completed, cancelled.'], 422);
             }
             $query->tab($request->tab);
@@ -162,13 +163,13 @@ class AppointmentController extends Controller
         $staff = $request->user(); // auth:staff guard'ı sayesinde her zaman gerçek Staff instance
 
         $validated = $request->validate([
-            'state_id' => 'required|in:' . Status::CONFIRMED . ',' . Status::COMPLETED . ',' . Status::CANCELLED,
+            'state_id' => 'required|in:'.Status::CONFIRMED.','.Status::COMPLETED.','.Status::CANCELLED,
         ]);
 
         return DB::transaction(function () use ($appointment, $staff, $validated) {
             $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
 
-            if (!$locked) {
+            if (! $locked) {
                 return response()->json(['message' => 'Randevu bulunamadı.'], 404);
             }
 
@@ -182,7 +183,7 @@ class AppointmentController extends Controller
             ];
 
             $allowed = $allowedTransitions[$locked->state_id] ?? [];
-            if (!in_array($validated['state_id'], $allowed)) {
+            if (! in_array($validated['state_id'], $allowed)) {
                 return response()->json(['message' => 'Bu durum geçişi geçersiz.'], 422);
             }
 
@@ -221,19 +222,27 @@ class AppointmentController extends Controller
      */
     public function store(Request $request)
     {
+        $tz = Staff::BUSINESS_TIMEZONE;
+
         $validated = $request->validate([
             'staff_id' => 'required|exists:staff,id',
             'service_id' => 'required|exists:services,id',
             'start_date' => [
                 'required',
                 'date',
+                // 'after:now' uses the app's default timezone. We re-validate
+                // against the business timezone below so a UTC server doesn't
+                // accept a 09:00 Istanbul slot that has already passed in
+                // Istanbul time.
                 'after:now',
-                function ($attribute, $value, $fail) {
+                function ($attribute, $value, $fail) use ($tz) {
                     try {
-                        $date = Carbon::parse($value);
-                        // Dakika 00, 15, 30 veya 45 olmalı ve saniye 0 olmalı
+                        $date = Carbon::parse($value, $tz);
                         if ($date->minute % 15 !== 0 || $date->second !== 0) {
                             $fail('Randevu başlangıç saati sadece :00, :15, :30 veya :45. dakikalara ayarlanabilir (Örn: 15:00:00, 15:15:00).');
+                        }
+                        if ($date->lt(Carbon::now($tz))) {
+                            $fail('Randevu saati geçmişte kalamaz.');
                         }
                     } catch (\Exception $e) {
                         $fail('Geçersiz tarih formatı.');
@@ -251,45 +260,67 @@ class AppointmentController extends Controller
             ], 422);
         }
 
-        $startDate = Carbon::parse($validated['start_date']);
+        // Parse in the business timezone so the stored UTC-equivalent
+        // matches what the user actually means in Europe/Istanbul.
+        $startDate = Carbon::parse($validated['start_date'], $tz);
         $endDate = $startDate->copy()->addMinutes($service->duration);
 
-        if (!$this->isWithinWorkingHours($startDate, $endDate)) {
+        if (! $this->isWithinWorkingHours($startDate, $endDate)) {
             return response()->json([
                 'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
             ], 422);
         }
 
-        return DB::transaction(function () use ($validated, $startDate, $endDate, $request) {
-            if (DB::connection()->getDriverName() === 'pgsql') { DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $validated['staff_id']]); }
+        try {
+            $appointment = DB::transaction(function () use ($validated, $startDate, $endDate, $request) {
+                $this->lockStaff((int) $validated['staff_id']);
 
-            $lockedStaff = Staff::where('id', $validated['staff_id'])->lockForUpdate()->first();
-            if (!$lockedStaff) {
-                return response()->json(['message' => 'Personel bulunamadı.'], 404);
-            }
+                $lockedStaff = Staff::where('id', $validated['staff_id'])->lockForUpdate()->first();
+                if (! $lockedStaff) {
+                    return null;
+                }
 
-            $conflict = Appointment::conflicting($validated['staff_id'], $startDate, $endDate)->exists();
+                $conflict = Appointment::conflicting($validated['staff_id'], $startDate, $endDate)->exists();
 
-            if ($conflict) {
+                if ($conflict) {
+                    return 'conflict';
+                }
+
+                $created = Appointment::create([
+                    'staff_id' => $validated['staff_id'],
+                    'customer_id' => $request->user()->id,
+                    'service_id' => $validated['service_id'],
+                    'state_id' => Status::PENDING,
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                ]);
+
+                return $created;
+            });
+        } catch (QueryException $e) {
+            // The DB-level UNIQUE(staff_id, start_date) caught a race we
+            // missed. Treat it the same as the in-app conflict check.
+            if ($this->isUniqueViolation($e)) {
                 return response()->json([
                     'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
                 ], 409);
             }
+            throw $e;
+        }
 
-            $appointment = Appointment::create([
-                'staff_id' => $validated['staff_id'],
-                'customer_id' => $request->user()->id,
-                'service_id' => $validated['service_id'],
-                'state_id' => Status::PENDING,
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-            ]);
+        if ($appointment === null) {
+            return response()->json(['message' => 'Personel bulunamadı.'], 404);
+        }
+        if ($appointment === 'conflict') {
+            return response()->json([
+                'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
+            ], 409);
+        }
 
-            return response()->json(
-                $appointment->load(['staff.person', 'customer.person', 'service', 'status']),
-                201
-            );
-        });
+        return response()->json(
+            $appointment->load(['staff.person', 'customer.person', 'service', 'status']),
+            201
+        );
     }
 
     /**
@@ -297,7 +328,7 @@ class AppointmentController extends Controller
      */
     public function show(Request $request, Appointment $appointment)
     {
-        if (!$this->canAccess($request->user(), $appointment)) {
+        if (! $this->canAccess($request->user(), $appointment)) {
             return response()->json(['message' => 'Bu randevuyu görme yetkiniz yok'], 403);
         }
 
@@ -309,9 +340,11 @@ class AppointmentController extends Controller
      */
     public function update(Request $request, Appointment $appointment)
     {
-        if (!$this->canAccess($request->user(), $appointment)) {
+        if (! $this->canAccess($request->user(), $appointment)) {
             return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
         }
+
+        $tz = Staff::BUSINESS_TIMEZONE;
 
         $validated = $request->validate([
             'state_id' => 'sometimes|exists:statuses,id',
@@ -321,11 +354,14 @@ class AppointmentController extends Controller
                 'sometimes',
                 'date',
                 'after:now',
-                function ($attribute, $value, $fail) {
+                function ($attribute, $value, $fail) use ($tz) {
                     try {
-                        $date = Carbon::parse($value);
+                        $date = Carbon::parse($value, $tz);
                         if ($date->minute % 15 !== 0 || $date->second !== 0) {
                             $fail('Randevu başlangıç saati sadece :00, :15, :30 veya :45. dakikalara ayarlanabilir (Örn: 15:00:00, 15:15:00).');
+                        }
+                        if ($date->lt(Carbon::now($tz))) {
+                            $fail('Randevu saati geçmişte kalamaz.');
                         }
                     } catch (\Exception $e) {
                         $fail('Geçersiz tarih formatı.');
@@ -337,81 +373,92 @@ class AppointmentController extends Controller
         $staffId = $validated['staff_id'] ?? $appointment->staff_id;
         $serviceId = $validated['service_id'] ?? $appointment->service_id;
 
-        return DB::transaction(function () use ($request, $appointment, $validated, $staffId, $serviceId) {
-            if (DB::connection()->getDriverName() === 'pgsql') { DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $staffId]); }
+        try {
+            $result = DB::transaction(function () use ($request, $appointment, $validated, $staffId, $serviceId) {
+                $this->lockStaff((int) $staffId);
 
-            $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
-            if (!$locked) {
-                return response()->json(['message' => 'Randevu bulunamadı.'], 404);
+                $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+                if (! $locked) {
+                    return ['status' => 404, 'body' => ['message' => 'Randevu bulunamadı.']];
+                }
+
+                // State guard: don't allow edits on terminal states.
+                if (in_array($locked->state_id, [Status::COMPLETED, Status::CANCELLED], true)) {
+                    return ['status' => 422, 'body' => ['message' => 'Tamamlanmış veya iptal edilmiş randevular düzenlenemez.']];
+                }
+
+                $updateData = [];
+
+                if (isset($validated['state_id'])) {
+                    $allowedTransitions = [
+                        Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
+                        Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
+                    ];
+                    $allowed = $allowedTransitions[$locked->state_id] ?? [];
+                    if (! in_array($validated['state_id'], $allowed)) {
+                        return ['status' => 422, 'body' => ['message' => 'Bu durum geçişi geçersiz.']];
+                    }
+                    $updateData['state_id'] = $validated['state_id'];
+                }
+
+                if (isset($validated['staff_id'])) {
+                    $isManaged = Staff::where('admin_id', $request->user()->id)
+                        ->where('id', $staffId)->exists();
+                    if (! $isManaged) {
+                        return ['status' => 403, 'body' => ['message' => 'Bu personel sizin yönetiminizde değil.']];
+                    }
+                }
+
+                $needsConflictCheck = isset($validated['staff_id']) || isset($validated['service_id']) || isset($validated['start_date']);
+
+                if ($needsConflictCheck) {
+                    $service = Service::findOrFail($serviceId);
+                    $lockedStaff = Staff::where('id', $staffId)->lockForUpdate()->first();
+                    if (! $lockedStaff) {
+                        return ['status' => 404, 'body' => ['message' => 'Personel bulunamadı.']];
+                    }
+
+                    if ($lockedStaff->catagory_id !== $service->catagory_id) {
+                        return ['status' => 422, 'body' => ['message' => 'Bu personel seçilen hizmeti sunmamaktadır.']];
+                    }
+
+                    $tz = Staff::BUSINESS_TIMEZONE;
+                    $startDate = isset($validated['start_date'])
+                        ? Carbon::parse($validated['start_date'], $tz)
+                        : $locked->start_date;
+
+                    $endDate = $startDate->copy()->addMinutes($service->duration);
+
+                    if (! $this->isWithinWorkingHours($startDate, $endDate)) {
+                        return ['status' => 422, 'body' => ['message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.']];
+                    }
+
+                    $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $locked->id)->exists();
+
+                    if ($conflict) {
+                        return ['status' => 409, 'body' => ['message' => 'Bu saat aralığında personelin başka bir randevusu var.']];
+                    }
+
+                    $updateData['staff_id'] = $staffId;
+                    $updateData['service_id'] = $serviceId;
+                    $updateData['start_date'] = $startDate;
+                    $updateData['end_date'] = $endDate;
+                }
+
+                $locked->update($updateData);
+
+                return ['status' => 200, 'body' => $locked->load(['staff.person', 'customer.person', 'service', 'status'])];
+            });
+        } catch (QueryException $e) {
+            if ($this->isUniqueViolation($e)) {
+                return response()->json([
+                    'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
+                ], 409);
             }
+            throw $e;
+        }
 
-            $updateData = [];
-
-            if (isset($validated['state_id'])) {
-                $allowedTransitions = [
-                    Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
-                    Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
-                ];
-                $allowed = $allowedTransitions[$locked->state_id] ?? [];
-                if (!in_array($validated['state_id'], $allowed)) {
-                    return response()->json(['message' => 'Bu durum geçişi geçersiz.'], 422);
-                }
-                $updateData['state_id'] = $validated['state_id'];
-            }
-
-            if (isset($validated['staff_id'])) {
-                $isManaged = Staff::where('admin_id', $request->user()->id)
-                                  ->where('id', $staffId)->exists();
-                if (!$isManaged) {
-                    return response()->json(['message' => 'Bu personel sizin yönetiminizde değil.'], 403);
-                }
-            }
-
-            $needsConflictCheck = isset($validated['staff_id']) || isset($validated['service_id']) || isset($validated['start_date']);
-
-            if ($needsConflictCheck) {
-                $service = Service::findOrFail($serviceId);
-                $lockedStaff = Staff::where('id', $staffId)->lockForUpdate()->first();
-                if (!$lockedStaff) {
-                    return response()->json(['message' => 'Personel bulunamadı.'], 404);
-                }
-
-                if ($lockedStaff->catagory_id !== $service->catagory_id) {
-                    return response()->json([
-                        'message' => 'Bu personel seçilen hizmeti sunmamaktadır.',
-                    ], 422);
-                }
-
-                $startDate = isset($validated['start_date'])
-                    ? Carbon::parse($validated['start_date'])
-                    : $locked->start_date;
-
-                $endDate = $startDate->copy()->addMinutes($service->duration);
-
-                if (!$this->isWithinWorkingHours($startDate, $endDate)) {
-                    return response()->json([
-                        'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
-                    ], 422);
-                }
-
-                $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $locked->id)->exists();
-
-                if ($conflict) {
-                    return response()->json([
-                        'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
-                    ], 409);
-                }
-
-                $updateData['staff_id'] = $staffId;
-                $updateData['service_id'] = $serviceId;
-                $updateData['start_date'] = $startDate;
-                $updateData['end_date'] = $endDate;
-            }
-
-            $locked->update($updateData);
-
-            return response()->json($locked->load(['staff.person', 'customer.person', 'service', 'status']));
-        });
+        return response()->json($result['body'], $result['status']);
     }
 
     /**
@@ -422,7 +469,7 @@ class AppointmentController extends Controller
         return DB::transaction(function () use ($appointment, $request) {
             $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
 
-            if (!$locked) {
+            if (! $locked) {
                 return response()->json(['message' => 'Randevu bulunamadı.'], 404);
             }
 
@@ -445,6 +492,8 @@ class AppointmentController extends Controller
      */
     public function updateMyAppointment(Request $request, Appointment $appointment)
     {
+        $tz = Staff::BUSINESS_TIMEZONE;
+
         $validated = $request->validate([
             'staff_id' => 'sometimes|exists:staff,id',
             'service_id' => 'sometimes|exists:services,id',
@@ -452,11 +501,14 @@ class AppointmentController extends Controller
                 'sometimes',
                 'date',
                 'after:now',
-                function ($attribute, $value, $fail) {
+                function ($attribute, $value, $fail) use ($tz) {
                     try {
-                        $date = Carbon::parse($value);
+                        $date = Carbon::parse($value, $tz);
                         if ($date->minute % 15 !== 0 || $date->second !== 0) {
                             $fail('Randevu başlangıç saati sadece :00, :15, :30 veya :45. dakikalara ayarlanabilir (Örn: 15:00:00, 15:15:00).');
+                        }
+                        if ($date->lt(Carbon::now($tz))) {
+                            $fail('Randevu saati geçmişte kalamaz.');
                         }
                     } catch (\Exception $e) {
                         $fail('Geçersiz tarih formatı.');
@@ -468,65 +520,93 @@ class AppointmentController extends Controller
         $staffId = $validated['staff_id'] ?? $appointment->staff_id;
         $serviceId = $validated['service_id'] ?? $appointment->service_id;
 
-        return DB::transaction(function () use ($request, $appointment, $validated, $staffId, $serviceId) {
-            if (DB::connection()->getDriverName() === 'pgsql') { DB::statement("SELECT pg_advisory_xact_lock(?)", [(int) $staffId]); }
+        try {
+            $appointment = DB::transaction(function () use ($request, $appointment, $validated, $staffId, $serviceId) {
+                $this->lockStaff((int) $staffId);
 
-            $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
-            if (!$locked) {
-                return response()->json(['message' => 'Randevu bulunamadı.'], 404);
-            }
+                $locked = Appointment::where('id', $appointment->id)->lockForUpdate()->first();
+                if (! $locked) {
+                    return null;
+                }
 
-            if ($locked->customer_id !== $request->user()->id) {
-                return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
-            }
+                if ($locked->customer_id !== $request->user()->id) {
+                    return 'forbidden';
+                }
 
-            if ($locked->state_id !== Status::PENDING) {
-                return response()->json(['message' => 'Sadece onay bekleyen randevular düzenlenebilir.'], 422);
-            }
+                if ($locked->state_id !== Status::PENDING) {
+                    return 'wrong_state';
+                }
 
-            $service = Service::findOrFail($serviceId);
-            $lockedStaff = Staff::where('id', $staffId)->lockForUpdate()->first();
-            if (!$lockedStaff) {
-                return response()->json(['message' => 'Personel bulunamadı.'], 404);
-            }
+                $service = Service::findOrFail($serviceId);
+                $lockedStaff = Staff::where('id', $staffId)->lockForUpdate()->first();
+                if (! $lockedStaff) {
+                    return 'no_staff';
+                }
 
-            if ($lockedStaff->catagory_id !== $service->catagory_id) {
-                return response()->json([
-                    'message' => 'Bu personel seçilen hizmeti sunmamaktadır.',
-                ], 422);
-            }
+                if ($lockedStaff->catagory_id !== $service->catagory_id) {
+                    return 'wrong_category';
+                }
 
-            $startDate = isset($validated['start_date'])
-                ? Carbon::parse($validated['start_date'])
-                : $locked->start_date;
+                $tz = Staff::BUSINESS_TIMEZONE;
+                $startDate = isset($validated['start_date'])
+                    ? Carbon::parse($validated['start_date'], $tz)
+                    : $locked->start_date;
 
-            $endDate = $startDate->copy()->addMinutes($service->duration);
+                $endDate = $startDate->copy()->addMinutes($service->duration);
 
-            if (!$this->isWithinWorkingHours($startDate, $endDate)) {
-                return response()->json([
-                    'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
-                ], 422);
-            }
+                if (! $this->isWithinWorkingHours($startDate, $endDate)) {
+                    return 'out_of_hours';
+                }
 
-            $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $locked->id)->exists();
+                $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $locked->id)->exists();
 
-            if ($conflict) {
+                if ($conflict) {
+                    return 'conflict';
+                }
+
+                $locked->update([
+                    'staff_id' => $staffId,
+                    'service_id' => $serviceId,
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                ]);
+
+                return $locked;
+            });
+        } catch (QueryException $e) {
+            if ($this->isUniqueViolation($e)) {
                 return response()->json([
                     'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
                 ], 409);
             }
+            throw $e;
+        }
 
-            $locked->update([
-                'staff_id' => $staffId,
-                'service_id' => $serviceId,
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-            ]);
+        if ($appointment === null) {
+            return response()->json(['message' => 'Randevu bulunamadı.'], 404);
+        }
+        if ($appointment === 'forbidden') {
+            return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
+        }
+        if ($appointment === 'wrong_state') {
+            return response()->json(['message' => 'Sadece onay bekleyen randevular düzenlenebilir.'], 422);
+        }
+        if ($appointment === 'no_staff') {
+            return response()->json(['message' => 'Personel bulunamadı.'], 404);
+        }
+        if ($appointment === 'wrong_category') {
+            return response()->json(['message' => 'Bu personel seçilen hizmeti sunmamaktadır.'], 422);
+        }
+        if ($appointment === 'out_of_hours') {
+            return response()->json(['message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.'], 422);
+        }
+        if ($appointment === 'conflict') {
+            return response()->json(['message' => 'Bu saat aralığında personelin başka bir randevusu var.'], 409);
+        }
 
-            return response()->json(
-                $locked->load(['staff.person', 'customer.person', 'service', 'status'])
-            );
-        });
+        return response()->json(
+            $appointment->load(['staff.person', 'customer.person', 'service', 'status'])
+        );
     }
 
     /**
@@ -534,11 +614,13 @@ class AppointmentController extends Controller
      */
     public function destroy(Request $request, Appointment $appointment)
     {
-        if (!$this->canAccess($request->user(), $appointment)) {
+        if (! $this->canAccess($request->user(), $appointment)) {
             return response()->json(['message' => 'Bu randevuyu silme yetkiniz yok'], 403);
         }
 
-        $appointment->delete();
+        DB::transaction(function () use ($appointment) {
+            $appointment->delete();
+        });
 
         return response()->json(['message' => 'Randevu silindi']);
     }
@@ -580,7 +662,39 @@ class AppointmentController extends Controller
     private function canAccess(Admin $admin, Appointment $appointment): bool
     {
         return Staff::where('admin_id', $admin->id)
-                    ->where('id', $appointment->staff_id)
-                    ->exists();
+            ->where('id', $appointment->staff_id)
+            ->exists();
+    }
+
+    /**
+     * Acquire a per-staff lock that works on every supported driver.
+     * PostgreSQL gets the strongest guarantee via advisory locks; other
+     * drivers rely on lockForUpdate() inside the transaction plus the
+     * UNIQUE(staff_id, start_date) DB constraint.
+     */
+    private function lockStaff(int $staffId): void
+    {
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('SELECT pg_advisory_xact_lock(?)', [$staffId]);
+        }
+    }
+
+    private function isUniqueViolation(QueryException $e): bool
+    {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'mysql') {
+            return ($e->errorInfo[1] ?? null) === 1062;
+        }
+
+        if ($driver === 'pgsql') {
+            return ($e->errorInfo[0] ?? null) === '23505';
+        }
+
+        if ($driver === 'sqlite') {
+            return str_contains($e->getMessage(), 'UNIQUE constraint failed');
+        }
+
+        return false;
     }
 }

@@ -8,6 +8,7 @@ use App\Models\Status;
 use App\Support\SearchHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class CategoryController extends Controller
 {
@@ -16,7 +17,7 @@ class CategoryController extends Controller
         $query = Category::query();
 
         if ($request->filled('name')) {
-            $query->whereRaw('name LIKE ? ' . SearchHelper::ESCAPE_CLAUSE, [SearchHelper::likeContains($request->name)]);
+            $query->whereRaw('name LIKE ? '.SearchHelper::ESCAPE_CLAUSE, [SearchHelper::likeContains($request->name)]);
         }
 
         $sortBy = in_array(strtolower($request->get('sort_by', 'name')), ['id', 'name', 'created_at'], true) ? strtolower($request->get('sort_by', 'name')) : 'name';
@@ -32,7 +33,7 @@ class CategoryController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:100',
+            'name' => ['required', 'string', 'max:100', Rule::unique('categories', 'name')],
         ]);
 
         $category = Category::create($validated);
@@ -48,7 +49,7 @@ class CategoryController extends Controller
     public function update(Request $request, Category $category)
     {
         $validated = $request->validate([
-            'name' => 'sometimes|string|max:100',
+            'name' => ['sometimes', 'string', 'max:100', Rule::unique('categories', 'name')->ignore($category->id)],
         ]);
 
         $category->update($validated);
@@ -70,6 +71,7 @@ class CategoryController extends Controller
             }
 
             $category->delete();
+
             return response()->json(['message' => 'Kategori silindi']);
         });
     }

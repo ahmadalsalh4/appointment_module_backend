@@ -12,8 +12,11 @@ class Status extends Model
     protected $fillable = ['name'];
 
     const PENDING = 1;
+
     const CONFIRMED = 2;
+
     const COMPLETED = 3;
+
     const CANCELLED = 4;
 
     public function appointments()

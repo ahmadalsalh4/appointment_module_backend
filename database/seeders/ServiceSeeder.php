@@ -30,7 +30,7 @@ class ServiceSeeder extends Seeder
 
         foreach ($services as $categoryName => $items) {
             $category = Category::where('name', $categoryName)->first();
-            if (!$category) {
+            if (! $category) {
                 continue;
             }
             foreach ($items as $item) {

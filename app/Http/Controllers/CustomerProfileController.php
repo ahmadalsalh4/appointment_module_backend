@@ -11,6 +11,7 @@ class CustomerProfileController extends Controller
     public function show(Request $request)
     {
         $customer = $request->user();
+
         return response()->json($customer->load('person'));
     }
 
@@ -20,7 +21,7 @@ class CustomerProfileController extends Controller
 
         $validated = $request->validate([
             'email' => ['sometimes', 'email', Rule::unique('customers', 'email')->ignore($customer->id)],
-            'password' => ['sometimes', 'string', 'min:6', 'confirmed'],
+            'password' => ['sometimes', 'string', 'min:8', 'confirmed'],
             'name' => ['sometimes', 'string', 'max:100'],
             'surname' => ['sometimes', 'string', 'max:100'],
             'phone_number' => ['nullable', 'string', 'max:20'],
@@ -28,12 +29,12 @@ class CustomerProfileController extends Controller
 
         DB::transaction(function () use ($validated, $customer) {
             $customerData = array_intersect_key($validated, array_flip(['email', 'password']));
-            if (!empty($customerData)) {
+            if (! empty($customerData)) {
                 $customer->update($customerData);
             }
 
             $personData = array_intersect_key($validated, array_flip(['name', 'surname', 'phone_number']));
-            if (!empty($personData) && $customer->person) {
+            if (! empty($personData) && $customer->person) {
                 $customer->person->update($personData);
             }
         });

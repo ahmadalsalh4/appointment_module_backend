@@ -17,18 +17,24 @@ return [
 
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-    'allowed_methods' => ['*'],
+    'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-    'allowed_origins' => ['*'],
+    // Override in .env (CORS_ALLOWED_ORIGINS) with comma-separated
+    // origins in production. The default below matches the local Vite
+    // dev server only.
+    'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'))))),
 
     'allowed_origins_patterns' => [],
 
-    'allowed_headers' => ['*'],
+    'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
 
     'exposed_headers' => [],
 
     'max_age' => 0,
 
+    // The frontend currently uses a Bearer token in localStorage and
+    // never sends cookies. Keep this false to avoid extra CORS surface
+    // until the migration to httpOnly cookies lands.
     'supports_credentials' => false,
 
 ];

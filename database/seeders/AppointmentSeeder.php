@@ -19,6 +19,7 @@ class AppointmentSeeder extends Seeder
 
         if ($customers->isEmpty() || $staff->isEmpty()) {
             $this->command->warn('Müşteri veya personel bulunamadı, AppointmentSeeder atlanıyor.');
+
             return;
         }
 
@@ -44,20 +45,28 @@ class AppointmentSeeder extends Seeder
         foreach ($plan as [$staffEmail, $customerEmail, $serviceName, $days, $hour, $minute, $statusId]) {
             $s = Staff::where('email', $staffEmail)->first();
             $c = Customer::where('email', $customerEmail)->first();
-            if (!$s || !$c) {
+            if (! $s || ! $c) {
                 continue;
             }
             $service = Service::where('name', $serviceName)
                 ->where('catagory_id', $s->catagory_id)
                 ->first();
-            if (!$service) {
+            if (! $service) {
                 continue;
             }
 
-            $start = Carbon::now()
+            $start = Carbon::now(Staff::BUSINESS_TIMEZONE)
                 ->addDays($days)
                 ->setTime($hour, $minute, 0);
             $end = $start->copy()->addMinutes($service->duration);
+
+            // Skip slots that fall outside the configured work blocks
+            // (e.g. a 120-min service starting at 16:00 would end at
+            // 18:00, past the 17:00 cutoff). Without this the seeder
+            // produces rows that the API would later reject.
+            if (! $this->withinWorkingHours($start, $end)) {
+                continue;
+            }
 
             Appointment::firstOrCreate(
                 [
@@ -72,5 +81,29 @@ class AppointmentSeeder extends Seeder
                 ],
             );
         }
+    }
+
+    private function withinWorkingHours(Carbon $start, Carbon $end): bool
+    {
+        $tz = Staff::BUSINESS_TIMEZONE;
+        $localStart = $start->copy()->setTimezone($tz);
+        $localEnd = $end->copy()->setTimezone($tz);
+
+        if ($localStart->toDateString() !== $localEnd->toDateString()) {
+            return false;
+        }
+
+        $dateStr = $localStart->toDateString();
+
+        foreach (Staff::WORK_BLOCKS as $block) {
+            $blockStart = Carbon::parse("{$dateStr} {$block['start']}", $tz);
+            $blockEnd = Carbon::parse("{$dateStr} {$block['end']}", $tz);
+
+            if ($localStart->gte($blockStart) && $localEnd->lte($blockEnd)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

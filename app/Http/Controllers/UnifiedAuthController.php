@@ -6,8 +6,8 @@ use App\Models\Admin;
 use App\Models\Customer;
 use App\Models\Staff;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class UnifiedAuthController extends Controller
@@ -116,10 +116,6 @@ class UnifiedAuthController extends Controller
         ]);
 
         $user = $request->user();
-
-        if (!Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages(['password' => ['Şifre hatalı.']]);
-        }
         $email = $user->email;
         $targetRole = $request->role;
 
@@ -129,10 +125,17 @@ class UnifiedAuthController extends Controller
             'admin' => Admin::where('email', $email)->first(),
         };
 
-        if (!$model) {
+        if (! $model) {
             return response()->json([
                 'message' => "Bu email ile {$targetRole} rolünde kayıt bulunamadı.",
             ], 404);
+        }
+
+        // NOTE: We verify the password against the TARGET model's password,
+        // not the current one. Multi-role users may keep different
+        // passwords per role; this matches what a user means by "switch".
+        if (! Hash::check($request->password, $model->password)) {
+            throw ValidationException::withMessages(['password' => ['Şifre hatalı.']]);
         }
 
         $relations = match ($targetRole) {
@@ -141,19 +144,22 @@ class UnifiedAuthController extends Controller
             'admin' => ['person'],
         };
 
-        return DB::transaction(function () use ($user, $model, $targetRole, $relations) {
+        // The DB work is just "delete old token, create new one". The
+        // response is built *after* commit so a serialization failure
+        // can't roll back the auth change.
+        $token = DB::transaction(function () use ($user, $model) {
             if ($user->currentAccessToken()) {
                 $user->currentAccessToken()->delete();
             }
 
-            $token = $model->createToken('auth-token')->plainTextToken;
-
-            return response()->json([
-                'user' => $model->load($relations),
-                'token' => $token,
-                'role' => $targetRole,
-            ]);
+            return $model->createToken('auth-token')->plainTextToken;
         });
+
+        return response()->json([
+            'user' => $model->load($relations),
+            'token' => $token,
+            'role' => $targetRole,
+        ]);
     }
 
     private function getCurrentRole($user): string
