@@ -30,9 +30,13 @@ class AvailabilityController extends Controller
         $date = $validated['date'];
         $tz = Staff::BUSINESS_TIMEZONE;
 
+        $dayStart = Carbon::parse("$date 00:00:00", $tz);
+        $dayEnd = Carbon::parse("$date 23:59:59.999999", $tz);
+
         $booked = Appointment::forStaff($validated['staff_id'])
-            ->onDate($date)
             ->where('state_id', '!=', Status::CANCELLED)
+            ->where('start_date', '<', $dayEnd)
+            ->where('end_date', '>', $dayStart)
             ->get(['start_date', 'end_date']);
 
         $availableSlots = [];

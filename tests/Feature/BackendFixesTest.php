@@ -10,6 +10,7 @@ use App\Models\Person;
 use App\Models\Service as ServiceModel;
 use App\Models\Staff;
 use App\Models\Status;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -310,5 +311,65 @@ class BackendFixesTest extends TestCase
                 'password' => 'password',
             ])->assertStatus(200);
         $this->assertSame('staff', $switch->json('role'));
+    }
+
+    public function test_availability_excludes_slots_covered_by_previous_day_appointment()
+    {
+        $admin = $this->makeAdmin();
+        $category = Category::create(['name' => 'Haircuts']);
+        $staff = $this->makeStaff($admin, $category);
+        $customer = $this->makeCustomer();
+        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Long Service', 'duration' => 30]);
+
+        $tz = Staff::BUSINESS_TIMEZONE;
+        $yesterday = Carbon::now($tz)->addDay()->subDay()->format('Y-m-d');
+        $tomorrow = Carbon::now($tz)->addDay()->format('Y-m-d');
+
+        Appointment::create([
+            'staff_id' => $staff->id,
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'state_id' => Status::PENDING,
+            'start_date' => Carbon::parse("{$yesterday} 16:45:00", $tz),
+            'end_date'   => Carbon::parse("{$yesterday} 17:15:00", $tz),
+        ]);
+
+        $response = $this->getJson("/api/availability?staff_id={$staff->id}&service_id={$service->id}&date={$tomorrow}");
+
+        $response->assertStatus(200);
+        $slots = $response->json('available_slots');
+
+        $this->assertNotContains('09:00', $slots, 'Morning slots should remain available; previous-day appointment does not span into the requested day.');
+        $this->assertNotContains('17:00', $slots, 'Late afternoon slots on the previous day must not leak into the requested day.');
+    }
+
+    public function test_availability_excludes_slots_covered_by_appointment_spanning_into_requested_day()
+    {
+        $admin = $this->makeAdmin();
+        $category = Category::create(['name' => 'Haircuts']);
+        $staff = $this->makeStaff($admin, $category);
+        $customer = $this->makeCustomer();
+        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+
+        $tz = Staff::BUSINESS_TIMEZONE;
+        $yesterday = Carbon::now($tz)->addDay()->subDay()->format('Y-m-d');
+        $target = Carbon::now($tz)->addDay()->format('Y-m-d');
+
+        Appointment::create([
+            'staff_id' => $staff->id,
+            'customer_id' => $customer->id,
+            'service_id' => $service->id,
+            'state_id' => Status::CONFIRMED,
+            'start_date' => Carbon::parse("{$yesterday} 16:45:00", $tz),
+            'end_date'   => Carbon::parse("{$target} 09:15:00", $tz),
+        ]);
+
+        $response = $this->getJson("/api/availability?staff_id={$staff->id}&service_id={$service->id}&date={$target}");
+
+        $response->assertStatus(200);
+        $slots = $response->json('available_slots');
+
+        $this->assertNotContains('09:00', $slots, '09:00 slot is covered by a previous-day appointment that ends at 09:15 on the requested day.');
+        $this->assertContains('10:00', $slots, 'After the previous-day appointment ends, slots should be available again.');
     }
 }
