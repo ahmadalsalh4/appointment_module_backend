@@ -26,7 +26,10 @@ WORKDIR /var/www
 # lockfile-driven installs work. We deliberately leave the source owned
 # by root and only grant www-data write access to specific dirs, so a
 # code-execution vulnerability cannot trivially modify PHP source.
-COPY --chown=root:root --chmod=550 . .
+# Mode u=rwX,g=rX,o=rX gives read/execute to www-data (UID 33) without
+# granting write or allowing anonymous access. 0550 made the source
+# unreadable to PHP-FPM workers, breaking the app.
+COPY --chown=root:root --chmod=u=rwX,g=rX,o=rX . .
 
 ENV COMPOSER_ALLOW_SUPERUSER=1
 RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts \

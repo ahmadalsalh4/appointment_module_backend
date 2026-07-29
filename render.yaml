@@ -41,7 +41,7 @@ services:
       - key: CORS_ALLOWED_ORIGINS
         value: http://localhost:5173,http://127.0.0.1:5173,https://astounding-blancmange-80c978.netlify.app
       - key: RUN_MIGRATIONS
-        value: "true"
+        value: "false"
       - key: SEED_DATABASE
         value: "false"
       - key: BCRYPT_ROUNDS

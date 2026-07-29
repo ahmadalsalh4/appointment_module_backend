@@ -24,9 +24,16 @@ if [ "$HAS_KEY" = "0" ]; then
     php artisan key:generate --force --no-interaction
 fi
 
-# 3. Run migrations only if RUN_MIGRATIONS is true (default true).
-if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
-    echo "Running migrations..."
+# 3. Run migrations only if RUN_MIGRATIONS is true. Default is false:
+#    web containers should not race on schema changes during a deploy.
+#    Instead, render.yaml wires a one-off `job` service (the
+#    appointment-module-oneshot image; see `Dockerfile.job`) which the
+#    operator triggers manually with `migrate --force`. Set
+#    RUN_MIGRATIONS=true in render.yaml only if you intentionally want
+#    every fresh web container to migrate on boot (single-instance
+#    deploys only).
+if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
+    echo "Running migrations (RUN_MIGRATIONS=true; ensure single instance)..."
     php artisan migrate --force --no-interaction
 fi
 

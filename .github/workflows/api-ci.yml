@@ -27,7 +27,9 @@ jobs:
 
     env:
       APP_ENV: testing
-      APP_KEY: "base64:UFZ11kk0QBAsqEhFN7igZZFxcN4zzu8ydZ9C0ulKzes="
+      # APP_KEY must be provided via the repository secret CI_APP_KEY.
+      # Generate with: php artisan key:generate --show
+      APP_KEY: ${{ secrets.CI_APP_KEY }}
       APP_DEBUG: "true"
       APP_TIMEZONE: Europe/Istanbul
       BCRYPT_ROUNDS: "4"

@@ -164,11 +164,16 @@ class ServiceController extends Controller
     {
         $query = Staff::where('category_id', $service->category_id)->with('person');
 
-        $allowedSorts = ['id', 'job_title', 'email', 'created_at'];
+        $allowedSorts = ['id', 'job_title', 'created_at'];
         $sortBy = in_array($request->get('sort_by', 'id'), $allowedSorts, true) ? $request->get('sort_by', 'id') : 'id';
         $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true) ? strtolower($request->get('sort_order', 'asc')) : 'asc';
         $query->orderBy($sortBy, $sortOrder);
 
-        return response()->json($query->get());
+        $staff = $query->get()->each(function (Staff $s) {
+            $s->makeHidden(['email']);
+            $s->person?->makeHidden(['phone_number']);
+        });
+
+        return response()->json($staff);
     }
 }

@@ -246,7 +246,7 @@ Testler **Pest** ile yazılmıştır. Mevcut testler:
 - **Soft-delete randevu geçmişini korur**
 - **Filtre validation** (bilinmeyen parametre → 422)
 
-CI: GitHub Actions `.github/workflows/api-ci.yml` Postgres service container ile çalışır.
+CI: GitHub Actions `.github/workflows/api-ci.yml` Postgres service container ile çalışır. CI, `APP_KEY` değerini repo secret `CI_APP_KEY`'den okur; yeni bir secret üretmek için `php artisan key:generate --show` çıktısını GitHub → Settings → Secrets and variables → Actions altına `CI_APP_KEY` adıyla ekleyin.
 
 ## Production Deployment (Render)
 
@@ -256,7 +256,7 @@ CI: GitHub Actions `.github/workflows/api-ci.yml` Postgres service container ile
 2. **Web** (`web`, Docker): `Dockerfile` üzerinden derlenir; ortam değişkenleri dashboard link ile sağlanır.
 3. **Job** (`job`, Docker): bir seferlik artisan komutları çalıştırmak için `Dockerfile.job`. Dashboard → Manual Run ile tetiklenir.
 
-Healthcheck `/up`. `RUN_MIGRATIONS=true` her container açılışında `migrate --force` çalıştırır; `SEED_DATABASE=true` yalnızca `APP_ENV=local` ile seed adımını çalıştırır, aksi hâlde entrypoint hata verir. `APP_KEY` Render env group'tan sağlanır; mevcut .env üzerine yazılmaz.
+Healthcheck `/up`. `RUN_MIGRATIONS` varsayılan olarak `false`'dur; web container'ları boot'ta migrasyon çalıştırmaz. Bunun yerine `appointment-module-oneshot` Job servisi tetiklenir (`migrate --force --no-interaction`). `SEED_DATABASE=true` yalnızca `APP_ENV=local` ile seed adımını çalıştırır, aksi hâlde entrypoint hata verir. `APP_KEY` Render env group'tan sağlanır; mevcut .env üzerine yazılmaz.
 
 Netlify frontend için `CORS_ALLOWED_ORIGINS` env değişkenine Netlify production URL'i + `*.netlify.app` regex'i `config/cors.php` içinde izinlidir.
 
