@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Admin;
 use App\Models\Appointment;
 use App\Models\Category;
+use App\Models\Customer;
 use App\Models\Person;
 use App\Models\Staff;
 use App\Models\Status;
@@ -71,7 +73,22 @@ class StaffController extends Controller
             'surname' => 'required|string|max:100',
             'phone_number' => 'nullable|string|max:20',
             'job_title' => 'required|string|max:100',
-            'email' => ['required', 'email', Rule::unique('staff', 'email')],
+            'email' => [
+                'required',
+                'email',
+                // Cross-table check: same email must not already exist
+                // on customer/admin tables. Staff-specific uniqueness is
+                // also enforced below.
+                Rule::unique('staff', 'email'),
+                function ($attribute, $value, $fail) {
+                    if (
+                        Customer::where('email', $value)->exists()
+                        || Admin::where('email', $value)->exists()
+                    ) {
+                        $fail('Bu email adresi zaten başka bir rolde kullanılıyor.');
+                    }
+                },
+            ],
             'password' => 'required|string|min:8|confirmed',
             'category_id' => 'nullable|exists:categories,id',
         ]);
@@ -84,9 +101,10 @@ class StaffController extends Controller
             ]);
 
             // Create the staff record with the user-controllable fields
-            // only, then forceFill() the admin_id. We use forceFill +
-            // save so admin_id stays out of $fillable (defense in depth
-            // against a future form field exposing it).
+            // only. `admin_id` is intentionally NOT in $fillable so a
+            // future form field can't expose it; we assign it directly on
+            // the model after create() (single-attribute assignment is
+            // always allowed).
             $staff = Staff::create([
                 'person_id' => $person->id,
                 'job_title' => $validated['job_title'],
@@ -94,7 +112,8 @@ class StaffController extends Controller
                 'password' => $validated['password'],
                 'category_id' => $validated['category_id'] ?? null,
             ]);
-            $staff->forceFill(['admin_id' => $request->user()->id])->save();
+            $staff->admin_id = $request->user()->id;
+            $staff->save();
 
             return $staff;
         });
@@ -104,7 +123,7 @@ class StaffController extends Controller
 
     public function show(Request $request, Staff $staff_member)
     {
-        if ((int) $staff_member->admin_id !== (int) $request->user()->id) {
+        if ($request->user()->cannot('manage-staff', $staff_member)) {
             return response()->json(['message' => 'Bu personeli görüntüleme yetkiniz yok'], 403);
         }
 
@@ -113,7 +132,7 @@ class StaffController extends Controller
 
     public function update(Request $request, Staff $staff_member)
     {
-        if ((int) $staff_member->admin_id !== (int) $request->user()->id) {
+        if ($request->user()->cannot('manage-staff', $staff_member)) {
             return response()->json(['message' => 'Bu personeli güncelleme yetkiniz yok'], 403);
         }
 
@@ -144,7 +163,7 @@ class StaffController extends Controller
 
     public function destroy(Request $request, Staff $staff_member)
     {
-        if ((int) $staff_member->admin_id !== (int) $request->user()->id) {
+        if ($request->user()->cannot('manage-staff', $staff_member)) {
             return response()->json(['message' => 'Bu personeli silme yetkiniz yok'], 403);
         }
 

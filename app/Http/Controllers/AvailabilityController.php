@@ -63,6 +63,10 @@ class AvailabilityController extends Controller
             }
 
             while ($slot->copy()->addMinutes($duration)->lte($blockEnd)) {
+                // Use lte (not lt) so a slot starting "right now" is
+                // considered bookable. Previously `lt` rejected it even
+                // when the service fits in the remaining minutes before
+                // the block ends.
                 if ($isToday && $slot->lt($now)) {
                     $slot->addMinutes(15);
 

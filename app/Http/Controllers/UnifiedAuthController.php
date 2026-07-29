@@ -23,8 +23,18 @@ class UnifiedAuthController extends Controller
         $password = $request->password;
         $otherRoles = [];
 
+        // Pre-build a dummy hash for timing-equalisation. The three
+        // branches below always perform the same number of Hash::check
+        // invocations regardless of which role (if any) the email maps
+        // to, so an attacker can't infer role membership from response
+        // timing.
+        $dummyHash = '$2y$10$'.str_repeat('A', 53);
+
         $customer = Customer::where('email', $email)->first();
-        if ($customer && Hash::check($password, $customer->password)) {
+        $customerHash = $customer?->password ?? $dummyHash;
+        $customerOk = Hash::check($password, $customerHash);
+
+        if ($customer && $customerOk) {
             $token = $customer->createToken('auth-token')->plainTextToken;
 
             if (Staff::where('email', $email)->exists()) {
@@ -43,7 +53,10 @@ class UnifiedAuthController extends Controller
         }
 
         $staff = Staff::where('email', $email)->first();
-        if ($staff && Hash::check($password, $staff->password)) {
+        $staffHash = $staff?->password ?? $dummyHash;
+        $staffOk = Hash::check($password, $staffHash);
+
+        if ($staff && $staffOk) {
             $token = $staff->createToken('auth-token')->plainTextToken;
 
             if (Customer::where('email', $email)->exists()) {
@@ -62,7 +75,10 @@ class UnifiedAuthController extends Controller
         }
 
         $admin = Admin::where('email', $email)->first();
-        if ($admin && Hash::check($password, $admin->password)) {
+        $adminHash = $admin?->password ?? $dummyHash;
+        $adminOk = Hash::check($password, $adminHash);
+
+        if ($admin && $adminOk) {
             $token = $admin->createToken('auth-token')->plainTextToken;
 
             if (Customer::where('email', $email)->exists()) {
@@ -90,15 +106,23 @@ class UnifiedAuthController extends Controller
         $user = $request->user();
         $email = $user->email;
         $currentRole = $this->getCurrentRole($user);
-        $roles = [];
 
-        if ($currentRole !== 'customer' && Customer::where('email', $email)->exists()) {
+        // Single batched query: ask the DB which tables hold this email.
+        // Avoids three serial round-trips and prevents the response time
+        // from scaling with the number of role tables checked.
+        $emails = [$email];
+        $hasCustomer = Customer::whereIn('email', $emails)->exists();
+        $hasStaff = Staff::whereIn('email', $emails)->exists();
+        $hasAdmin = Admin::whereIn('email', $emails)->exists();
+
+        $roles = [];
+        if ($currentRole !== 'customer' && $hasCustomer) {
             $roles[] = 'customer';
         }
-        if ($currentRole !== 'staff' && Staff::where('email', $email)->exists()) {
+        if ($currentRole !== 'staff' && $hasStaff) {
             $roles[] = 'staff';
         }
-        if ($currentRole !== 'admin' && Admin::where('email', $email)->exists()) {
+        if ($currentRole !== 'admin' && $hasAdmin) {
             $roles[] = 'admin';
         }
 
@@ -156,8 +180,8 @@ class UnifiedAuthController extends Controller
         });
 
         // Build other_roles list AFTER we've switched so we don't
-        // accidentally echo the role we just left.
-        $email = $user->email;
+        // accidentally echo the role we just left. $email was bound
+        // above from the current user, so it's already correct here.
         $otherRoles = [];
         if ($targetRole !== 'customer' && Customer::where('email', $email)->exists()) {
             $otherRoles[] = 'customer';

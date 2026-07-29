@@ -29,13 +29,18 @@ return [
     ))))),
 
     // Only use this for genuine regex matching (Netlify preview deploy
-    // subdomains, Render preview URLs). Netlify's preview URL scheme is
+    // subdomains). Netlify's preview URL scheme is
     // `https://<branch>--<site-slug>.netlify.app`; this regex matches
     // all of them while staying tied to the configured production site
     // slug.
+    //
+    // NOTE: do NOT add a generic `*.onrender.com` regex here — it
+    // matches every Render web service and any unrelated deployment
+    // could make credentialed cross-origin requests against this API.
+    // If preview deploys on Render are needed, list the specific service
+    // slug here.
     'allowed_origins_patterns' => [
         '#^https://[a-z0-9-]+--astounding-blancmange-80c978\.netlify\.app$#',
-        '#^https://[a-z0-9-]+--[a-z0-9-]+\.onrender\.com$#',
     ],
 
     'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],

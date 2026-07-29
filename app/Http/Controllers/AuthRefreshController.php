@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Admin;
+use App\Models\Customer;
+use App\Models\Staff;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -28,19 +31,28 @@ class AuthRefreshController extends Controller
             return $user->createToken('auth-token')->plainTextToken;
         });
 
+        // Load the same relation set as UnifiedAuthController::login so
+        // the refresh response shape matches the login response shape.
+        $relations = match (get_class($user)) {
+            Customer::class => ['person'],
+            Staff::class => ['person', 'managingAdmin'],
+            Admin::class => ['person'],
+            default => [],
+        };
+
         return response()->json([
             'token' => $token,
             'role' => $this->getCurrentRole($user),
-            'user' => $user,
+            'user' => $user->load($relations),
         ]);
     }
 
     private function getCurrentRole($user): string
     {
         return match (get_class($user)) {
-            \App\Models\Customer::class => 'customer',
-            \App\Models\Staff::class => 'staff',
-            \App\Models\Admin::class => 'admin',
+            Customer::class => 'customer',
+            Staff::class => 'staff',
+            Admin::class => 'admin',
             default => 'unknown',
         };
     }

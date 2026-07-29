@@ -11,12 +11,13 @@ class AdminSeeder extends Seeder
 {
     public function run(): void
     {
-        $person = Person::firstOrCreate(
+        // updateOrCreate so subsequent seed runs refresh name/surname/phone
+        // instead of silently leaving stale values from firstOrCreate.
+        $person = Person::updateOrCreate(
             ['phone_number' => '5550000000'],
             [
                 'name' => 'Admin',
                 'surname' => 'Yönetici',
-                'phone_number' => '5550000000',
             ]
         );
 

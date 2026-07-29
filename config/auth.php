@@ -127,7 +127,18 @@ return [
     |
     */
 
-    'passwords' => [],
+    'passwords' => [
+        // Configured alongside the default broker ('customers') so that
+        // `Password::sendResetLink()` etc. don't throw
+        // `InvalidArgumentException: Password broker [customers] is not defined.`
+        // if password reset is ever wired up.
+        'customers' => [
+            'provider' => 'customers',
+            'table' => env('AUTH_PASSWORD_RESET_TABLE', 'password_reset_tokens'),
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+    ],
 
     /*
     |--------------------------------------------------------------------------

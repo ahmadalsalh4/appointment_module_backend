@@ -18,12 +18,14 @@ return [
     |
     */
 
-    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
-        '%s%s',
-        'localhost,localhost:3000,localhost:5173,127.0.0.1,127.0.0.1:8000,127.0.0.1:5173,::1',
-        Sanctum::currentApplicationUrlWithPort(),
-        // Sanctum::currentRequestHost(),
-    ))),
+    // Filter empty values so a missing APP_URL doesn't pollute the
+// stateful-domains list with `","` artifacts.
+'stateful' => array_values(array_filter(explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
+    '%s%s',
+    'localhost,localhost:3000,localhost:5173,127.0.0.1,127.0.0.1:8000,127.0.0.1:5173,::1',
+    Sanctum::currentApplicationUrlWithPort(),
+    // Sanctum::currentRequestHost(),
+))))),
 
     /*
     |--------------------------------------------------------------------------

@@ -1,0 +1,9 @@
+vendor/
+node_modules/
+storage/
+bootstrap/cache/
+.cache/
+.git/
+*.log
+composer.lock
+package-lock.json

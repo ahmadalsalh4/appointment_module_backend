@@ -7,6 +7,7 @@ use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Status;
 use App\Support\SearchHelper;
+use App\Support\WorkingHoursChecker;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -56,6 +57,11 @@ class ServiceController extends Controller
 
     public function show(Service $service)
     {
+        // Public endpoint: do not expose soft-deleted records.
+        if ($service->trashed()) {
+            return response()->json(['message' => 'Hizmet bulunamadı.'], 404);
+        }
+
         return response()->json($service->load('category'));
     }
 
@@ -112,16 +118,28 @@ class ServiceController extends Controller
                     'applied_at' => now(),
                 ]);
 
-                // Recompute end_date for every non-terminal appointment.
+                // Recompute end_date for every non-terminal appointment, but
+                // refuse the cascade if any appointment would land outside
+                // the staff member's working hours. Otherwise we'd push
+                // a confirmed booking past 17:00 silently.
                 $rows = $service->appointments()
                     ->whereNotIn('state_id', [\App\Models\Status::COMPLETED, \App\Models\Status::CANCELLED])
-                    ->get(['id', 'start_date']);
+                    ->get(['id', 'start_date', 'staff_id']);
 
                 foreach ($rows as $row) {
                     $start = \Carbon\Carbon::parse($row->start_date);
+                    $end = $start->copy()->addMinutes($newDuration);
+
+                    if (! WorkingHoursChecker::isWithin($start, $end, Staff::WORK_BLOCKS)) {
+                        throw new \RuntimeException(sprintf(
+                            'Süre değişikliği iptal edildi: randevu #%d personelin mesai saatleri dışına taşacak.',
+                            $row->id,
+                        ));
+                    }
+
                     \DB::table('appointments')
                         ->where('id', $row->id)
-                        ->update(['end_date' => $start->copy()->addMinutes($newDuration)]);
+                        ->update(['end_date' => $end]);
                 }
             }
 

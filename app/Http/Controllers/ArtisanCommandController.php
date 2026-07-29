@@ -133,8 +133,11 @@ class ArtisanCommandController extends Controller
 
         $key = $request->input('command');
         if (! is_string($key) || ! isset(self::ALLOWLIST[$key])) {
+            // Don't echo the full allowlist — internal commands like
+            // `migrate-fresh` are sensitive. Token-protected, but defense
+            // in depth says to not enumerate them externally.
             return response()->json([
-                'message' => 'Unknown command. Allowed: '.implode(', ', array_keys(self::ALLOWLIST)),
+                'message' => 'Unknown command.',
             ], 422);
         }
 
@@ -171,8 +174,10 @@ class ArtisanCommandController extends Controller
                 }
                 // Defense in depth: never accept anything that starts with
                 // a dash followed by a letter in a free-form arg slot,
-                // because that's an unguarded flag.
-                if (preg_match('/^-{1,2}[a-zA-Z]/', $a) === 1) {
+                // because that's an unguarded flag. Also blocks Unicode
+                // dash lookalikes (em dash, en dash, hyphen, figure dash,
+                // etc.) that PHP's regex would otherwise miss.
+                if (preg_match('/^[\x{2010}\x{2011}\x{2012}\x{2013}\x{2014}\x{2015}-]{1,2}[a-zA-Z]/u', $a) === 1) {
                     return response()->json([
                         'message' => "arg `{$a}` looks like a flag; use the `flags` field instead.",
                     ], 422);
@@ -195,9 +200,15 @@ class ArtisanCommandController extends Controller
             ));
             $output = Artisan::output();
         } catch (\Throwable $e) {
+            // Token-protected endpoint, but never leak DB connection
+            // strings, file paths, or driver internals back to the caller.
+            // Full exception is logged; the response only carries a generic
+            // 500 with the exception class name.
             Log::error('artisan-controller: command threw', [
                 'internal' => $entry['command'],
+                'exception_class' => $e::class,
                 'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -205,7 +216,7 @@ class ArtisanCommandController extends Controller
                 'internal' => $entry['command'],
                 'exit_code' => -1,
                 'output' => Artisan::output(),
-                'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
             ], 500);
         }
 

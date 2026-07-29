@@ -18,7 +18,11 @@ return [
     |
     */
 
-    'driver' => env('SESSION_DRIVER', 'database'),
+    // Default to 'array' — the API is stateless and we never use Laravel's
+// session middleware. The default 'database' driver creates a `sessions`
+// table that the app never reads. Use 'file' or 'redis' if you ever wire
+// up a cookie-based admin UI.
+'driver' => env('SESSION_DRIVER', 'array'),
 
     /*
     |--------------------------------------------------------------------------

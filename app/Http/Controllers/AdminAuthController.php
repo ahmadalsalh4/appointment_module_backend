@@ -4,14 +4,15 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 
-class AdminAuthController extends Controller
+/**
+ * @deprecated Use {@see LogoutController} instead. Kept for backward
+ * compatibility with the existing route definition
+ * (`POST /admin/logout`, `POST /staff/logout`, `POST /customer/logout`).
+ */
+class AdminAuthController extends LogoutController
 {
     public function logout(Request $request)
     {
-        if ($request->user()->currentAccessToken()) {
-            $request->user()->currentAccessToken()->delete();
-        }
-
-        return response()->json(['message' => 'Çıkış yapıldı']);
+        return parent::logout($request);
     }
 }

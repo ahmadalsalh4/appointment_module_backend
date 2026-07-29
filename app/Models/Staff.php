@@ -19,6 +19,12 @@ class Staff extends Authenticatable
         'email',
         'password',
         'category_id',
+        // `admin_id` is intentionally NOT here on a typical create path —
+        // StaffController::store assigns it via direct attribute
+        // assignment after create(). It IS fillable in the update path
+        // (StaffController::update) for admin-scoped operations. Adding
+        // it here means future form fields that expose it would be
+        // honoured — be careful.
     ];
 
     protected $hidden = ['password'];

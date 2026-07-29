@@ -6,12 +6,15 @@ use App\Models\Admin;
 use App\Models\Customer;
 use App\Models\Person;
 use App\Models\Staff;
+use App\Support\Concerns\HandlesUniqueViolation;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CustomerAuthController extends Controller
 {
+    use HandlesUniqueViolation;
+
     public function register(Request $request)
     {
         // Cross-table email uniqueness: a customer/staff/admin may share
@@ -54,10 +57,7 @@ class CustomerAuthController extends Controller
             });
         } catch (QueryException $e) {
             if ($this->isUniqueViolation($e)) {
-                return response()->json([
-                    'errors' => ['phone_number' => ['Bu telefon numarası zaten kullanılıyor.']],
-                    'message' => 'Doğrulama hatası.',
-                ], 422);
+                return $this->uniqueViolationResponse($e, defaultField: 'phone_number');
             }
             throw $e;
         }
@@ -74,26 +74,5 @@ class CustomerAuthController extends Controller
         }
 
         return response()->json(['message' => 'Çıkış yapıldı']);
-    }
-
-    /**
-     * Translate DB unique-constraint violations into a 422 response so
-     * the client gets a structured validation error instead of a 500.
-     */
-    private function isUniqueViolation(QueryException $e): bool
-    {
-        $driver = DB::connection()->getDriverName();
-
-        if ($driver === 'pgsql') {
-            return ($e->errorInfo[0] ?? null) === '23505';
-        }
-        if ($driver === 'mysql') {
-            return ($e->errorInfo[1] ?? null) === 1062;
-        }
-        if ($driver === 'sqlite') {
-            return str_contains($e->getMessage(), 'UNIQUE constraint failed');
-        }
-
-        return false;
     }
 }

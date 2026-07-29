@@ -9,7 +9,15 @@ class Status extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['id', 'name'];
+    // `id` is intentionally fillable: seeders and tests need to set known
+// IDs so that the four hard-coded constants (PENDING=1, CONFIRMED=2,
+// COMPLETED=3, CANCELLED=4) line up with FK references on the
+// `appointments.state_id` column. There is no public route that calls
+// Status::create(), so there is no attack surface for PK injection.
+// If you ever expose such a route, REMOVE `id` from $fillable and
+// convert the seeder/test factories to `firstOrCreate(['name' => ...])`
+// + a separate update of the id.
+protected $fillable = ['id', 'name'];
 
     const PENDING = 1;
 

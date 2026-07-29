@@ -8,6 +8,14 @@ use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Status;
 use App\Support\AppointmentStateMachine;
+use App\Support\Concerns\AppointmentListFilters;
+use App\Support\Concerns\HandlesUniqueViolation;
+use App\Support\Exceptions\AppointmentCategoryMismatchException;
+use App\Support\Exceptions\AppointmentConflictException;
+use App\Support\Exceptions\AppointmentForbiddenException;
+use App\Support\Exceptions\AppointmentOutOfHoursException;
+use App\Support\Exceptions\AppointmentWrongStateException;
+use App\Support\WorkingHoursChecker;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -15,45 +23,25 @@ use Illuminate\Support\Facades\DB;
 
 class AppointmentController extends Controller
 {
+    use AppointmentListFilters;
+    use HandlesUniqueViolation;
+
     /**
      * ADMIN: Giriş yapmış adminin yönettiği personellere ait randevuları döndürür
      */
     public function index(Request $request)
     {
-        $allowedKeys = [
+        $validated = $this->validateListRequest($request, [
             'tab', 'status_id', 'staff_id', 'date', 'customer_name',
             'sort_by', 'sort_order', 'per_page', 'page',
-        ];
-        $this->rejectUnknownFilters($request, $allowedKeys);
-
-        $request->validate([
-            'tab' => ['sometimes', 'in:upcoming,pending,completed,cancelled'],
-            'status_id' => ['sometimes', 'integer', 'min:1', 'max:4'],
-            'staff_id' => ['sometimes', 'integer'],
-            'date' => ['sometimes', 'date_format:Y-m-d'],
-            'customer_name' => ['sometimes', 'string', 'max:200'],
-            'sort_by' => ['sometimes', 'in:start_date,state_id,created_at'],
-            'sort_order' => ['sometimes', 'in:asc,desc'],
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
-            'page' => ['sometimes', 'integer', 'min:1'],
         ]);
 
         $admin = $request->user();
-
         $managedStaffIds = Staff::where('admin_id', (int) $admin->id)->pluck('id');
 
         $query = Appointment::with(['staff.person', 'customer.person', 'service', 'status'])
             ->whereIn('staff_id', $managedStaffIds);
 
-        if ($request->filled('tab')) {
-            $query->tab($request->tab);
-        }
-        if ($request->filled('status_id')) {
-            $query->byStatus((int) $request->status_id);
-        }
-        if ($request->filled('date')) {
-            $query->onDate($request->date);
-        }
         if ($request->filled('staff_id')) {
             $query->forStaff((int) $request->staff_id);
         }
@@ -61,18 +49,9 @@ class AppointmentController extends Controller
             $query->searchCustomer((string) $request->customer_name);
         }
 
-        $sortOrder = strtolower((string) $request->get('sort_order', 'asc'));
-        $sortOrder = in_array($sortOrder, ['asc', 'desc'], true) ? $sortOrder : 'asc';
+        $this->applyListFilters($query, $request, $validated);
 
-        if (in_array((string) $request->get('sort_by'), ['start_date', 'state_id', 'created_at'], true)) {
-            $query->orderBy((string) $request->get('sort_by'), $sortOrder);
-        } else {
-            $query->orderBy('start_date', 'asc');
-        }
-
-        $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
-
-        return response()->json($query->paginate($perPage));
+        return response()->json($query->paginate($this->paginationSize($request)));
     }
 
     /**
@@ -80,55 +59,20 @@ class AppointmentController extends Controller
      */
     public function myAppointments(Request $request)
     {
-        // Reject unknown filter shapes early so we never silently drop them.
-        $allowedKeys = [
-            'tab', 'status_id', 'staff_id', 'date',
+        // `staff_id` is intentionally NOT in the allowlist — the customer
+        // already sees only their own appointments, so a staff filter
+        // would be a no-op (kept here so we 422 instead of silently ignore).
+        $validated = $this->validateListRequest($request, [
+            'tab', 'status_id', 'date',
             'sort_by', 'sort_order', 'per_page', 'page',
-        ];
-        $this->rejectUnknownFilters($request, $allowedKeys);
-
-        $request->validate([
-            'tab' => ['sometimes', 'in:upcoming,pending,completed,cancelled'],
-            'status_id' => ['sometimes', 'integer', 'min:1', 'max:4'],
-            'staff_id' => ['sometimes', 'integer'],
-            'date' => ['sometimes', 'date_format:Y-m-d'],
-            'sort_by' => ['sometimes', 'in:start_date,state_id,created_at'],
-            'sort_order' => ['sometimes', 'in:asc,desc'],
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
-            'page' => ['sometimes', 'integer', 'min:1'],
-            // customer_name intentionally not accepted — a customer can
-            // only ever see their own appointments, and the frontend has
-            // been updated to omit the search input on this view.
         ]);
 
         $query = Appointment::where('customer_id', $request->user()->id)
             ->with(['staff.person', 'service', 'status']);
 
-        if ($request->filled('tab')) {
-            $query->tab($request->tab);
-        }
-        if ($request->filled('status_id')) {
-            $query->byStatus((int) $request->status_id);
-        }
-        if ($request->filled('staff_id')) {
-            $query->forStaff((int) $request->staff_id);
-        }
-        if ($request->filled('date')) {
-            $query->onDate($request->date);
-        }
+        $this->applyListFilters($query, $request, $validated);
 
-        $sortOrder = strtolower((string) $request->get('sort_order', 'asc'));
-        $sortOrder = in_array($sortOrder, ['asc', 'desc'], true) ? $sortOrder : 'asc';
-
-        if (in_array((string) $request->get('sort_by'), ['start_date', 'state_id', 'created_at'], true)) {
-            $query->orderBy((string) $request->get('sort_by'), $sortOrder);
-        } else {
-            $query->orderBy('start_date', 'asc');
-        }
-
-        $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
-
-        return response()->json($query->paginate($perPage));
+        return response()->json($query->paginate($this->paginationSize($request)));
     }
 
     /**
@@ -136,21 +80,9 @@ class AppointmentController extends Controller
      */
     public function myStaffAppointments(Request $request)
     {
-        $allowedKeys = [
+        $validated = $this->validateListRequest($request, [
             'tab', 'status_id', 'date', 'customer_name',
             'sort_by', 'sort_order', 'per_page', 'page',
-        ];
-        $this->rejectUnknownFilters($request, $allowedKeys);
-
-        $request->validate([
-            'tab' => ['sometimes', 'in:upcoming,pending,completed,cancelled'],
-            'status_id' => ['sometimes', 'integer', 'min:1', 'max:4'],
-            'date' => ['sometimes', 'date_format:Y-m-d'],
-            'customer_name' => ['sometimes', 'string', 'max:200'],
-            'sort_by' => ['sometimes', 'in:start_date,state_id,created_at'],
-            'sort_order' => ['sometimes', 'in:asc,desc'],
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
-            'page' => ['sometimes', 'integer', 'min:1'],
         ]);
 
         $staff = $request->user();
@@ -158,31 +90,13 @@ class AppointmentController extends Controller
         $query = Appointment::where('staff_id', $staff->id)
             ->with(['customer.person', 'service', 'status']);
 
-        if ($request->filled('tab')) {
-            $query->tab($request->tab);
-        }
-        if ($request->filled('status_id')) {
-            $query->byStatus((int) $request->status_id);
-        }
-        if ($request->filled('date')) {
-            $query->onDate($request->date);
-        }
         if ($request->filled('customer_name')) {
             $query->searchCustomer((string) $request->customer_name);
         }
 
-        $sortOrder = strtolower((string) $request->get('sort_order', 'asc'));
-        $sortOrder = in_array($sortOrder, ['asc', 'desc'], true) ? $sortOrder : 'asc';
+        $this->applyListFilters($query, $request, $validated);
 
-        if (in_array((string) $request->get('sort_by'), ['start_date', 'state_id', 'created_at'], true)) {
-            $query->orderBy((string) $request->get('sort_by'), $sortOrder);
-        } else {
-            $query->orderBy('start_date', 'asc');
-        }
-
-        $perPage = max(1, min(100, (int) $request->get('per_page', 15)));
-
-        return response()->json($query->paginate($perPage));
+        return response()->json($query->paginate($this->paginationSize($request)));
     }
 
     /**
@@ -296,7 +210,7 @@ class AppointmentController extends Controller
         $startDate = Carbon::parse($validated['start_date'], $tz);
         $endDate = $startDate->copy()->addMinutes($service->duration);
 
-        if (! $this->isWithinWorkingHours($startDate, $endDate)) {
+        if (! WorkingHoursChecker::isWithin($startDate, $endDate, Staff::WORK_BLOCKS)) {
             return response()->json([
                 'message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.',
             ], 422);
@@ -314,10 +228,10 @@ class AppointmentController extends Controller
                 $conflict = Appointment::conflicting($validated['staff_id'], $startDate, $endDate)->exists();
 
                 if ($conflict) {
-                    return 'conflict';
+                    throw new AppointmentConflictException;
                 }
 
-                $created = Appointment::create([
+                return Appointment::create([
                     'staff_id' => $validated['staff_id'],
                     'customer_id' => $request->user()->id,
                     'service_id' => $validated['service_id'],
@@ -325,27 +239,18 @@ class AppointmentController extends Controller
                     'start_date' => $startDate,
                     'end_date' => $endDate,
                 ]);
-
-                return $created;
             });
         } catch (QueryException $e) {
             // The DB-level UNIQUE(staff_id, start_date) caught a race we
             // missed. Treat it the same as the in-app conflict check.
             if ($this->isUniqueViolation($e)) {
-                return response()->json([
-                    'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
-                ], 409);
+                throw new AppointmentConflictException;
             }
             throw $e;
         }
 
         if ($appointment === null) {
             return response()->json(['message' => 'Personel bulunamadı.'], 404);
-        }
-        if ($appointment === 'conflict') {
-            return response()->json([
-                'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
-            ], 409);
         }
 
         return response()->json(
@@ -460,7 +365,7 @@ class AppointmentController extends Controller
 
                     $endDate = $startDate->copy()->addMinutes($service->duration);
 
-                    if (! $this->isWithinWorkingHours($startDate, $endDate)) {
+                    if (! WorkingHoursChecker::isWithin($startDate, $endDate, Staff::WORK_BLOCKS)) {
                         return ['status' => 422, 'body' => ['message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.']];
                     }
 
@@ -508,7 +413,7 @@ class AppointmentController extends Controller
                 return response()->json(['message' => 'Bu randevuyu iptal etme yetkiniz yok'], 403);
             }
 
-            if (in_array($locked->state_id, [Status::COMPLETED, Status::CANCELLED])) {
+            if (in_array((int) $locked->state_id, [Status::COMPLETED, Status::CANCELLED], true)) {
                 return response()->json(['message' => 'Tamamlanmış veya zaten iptal edilmiş randevular tekrar iptal edilemez.'], 422);
             }
 
@@ -561,21 +466,21 @@ class AppointmentController extends Controller
                 }
 
                 if ((int) $locked->customer_id !== (int) $request->user()->id) {
-                    return 'forbidden';
+                    throw new AppointmentForbiddenException;
                 }
 
                 if ($locked->state_id !== Status::PENDING) {
-                    return 'wrong_state';
+                    throw new AppointmentWrongStateException;
                 }
 
                 $service = Service::findOrFail($serviceId);
                 $lockedStaff = Staff::where('id', $staffId)->lockForUpdate()->first();
                 if (! $lockedStaff) {
-                    return 'no_staff';
+                    return null;
                 }
 
                 if ((int) $lockedStaff->category_id !== (int) $service->category_id) {
-                    return 'wrong_category';
+                    throw new AppointmentCategoryMismatchException;
                 }
 
                 $tz = Staff::BUSINESS_TIMEZONE;
@@ -585,14 +490,14 @@ class AppointmentController extends Controller
 
                 $endDate = $startDate->copy()->addMinutes($service->duration);
 
-                if (! $this->isWithinWorkingHours($startDate, $endDate)) {
-                    return 'out_of_hours';
+                if (! WorkingHoursChecker::isWithin($startDate, $endDate, Staff::WORK_BLOCKS)) {
+                    throw new AppointmentOutOfHoursException;
                 }
 
                 $conflict = Appointment::conflicting($staffId, $startDate, $endDate, $locked->id)->exists();
 
                 if ($conflict) {
-                    return 'conflict';
+                    throw new AppointmentConflictException;
                 }
 
                 $locked->update([
@@ -606,33 +511,13 @@ class AppointmentController extends Controller
             });
         } catch (QueryException $e) {
             if ($this->isUniqueViolation($e)) {
-                return response()->json([
-                    'message' => 'Bu saat aralığında personelin başka bir randevusu var.',
-                ], 409);
+                throw new AppointmentConflictException;
             }
             throw $e;
         }
 
         if ($appointment === null) {
             return response()->json(['message' => 'Randevu bulunamadı.'], 404);
-        }
-        if ($appointment === 'forbidden') {
-            return response()->json(['message' => 'Bu randevuyu düzenleme yetkiniz yok'], 403);
-        }
-        if ($appointment === 'wrong_state') {
-            return response()->json(['message' => 'Sadece onay bekleyen randevular düzenlenebilir.'], 422);
-        }
-        if ($appointment === 'no_staff') {
-            return response()->json(['message' => 'Personel bulunamadı.'], 404);
-        }
-        if ($appointment === 'wrong_category') {
-            return response()->json(['message' => 'Bu personel seçilen hizmeti sunmamaktadır.'], 422);
-        }
-        if ($appointment === 'out_of_hours') {
-            return response()->json(['message' => 'Seçilen saat aralığı personelin mesai saatleri (09:00-12:00, 13:00-17:00) dışındadır.'], 422);
-        }
-        if ($appointment === 'conflict') {
-            return response()->json(['message' => 'Bu saat aralığında personelin başka bir randevusu var.'], 409);
         }
 
         return response()->json(
@@ -654,35 +539,6 @@ class AppointmentController extends Controller
         });
 
         return response()->json(['message' => 'Randevu silindi']);
-    }
-
-    /**
-     * Yardımcı: Randevunun personelin çalışma saatleri içinde olup olmadığını kontrol eder.
-     * Çalışma saatleri BUSINESS_TIMEZONE (Europe/Istanbul) içinde yorumlanır;
-     * gelen datetime hangi timezone'da olursa olsun önce bu zona dönüştürülür.
-     */
-    private function isWithinWorkingHours(Carbon $startDate, Carbon $endDate): bool
-    {
-        $tz = Staff::BUSINESS_TIMEZONE;
-        $localStart = $startDate->copy()->setTimezone($tz);
-        $localEnd = $endDate->copy()->setTimezone($tz);
-
-        if ($localStart->toDateString() !== $localEnd->toDateString()) {
-            return false;
-        }
-
-        $dateStr = $localStart->toDateString();
-
-        foreach (Staff::WORK_BLOCKS as $block) {
-            $blockStart = Carbon::parse("{$dateStr} {$block['start']}", $tz);
-            $blockEnd = Carbon::parse("{$dateStr} {$block['end']}", $tz);
-
-            if ($localStart->gte($blockStart) && $localEnd->lte($blockEnd)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -708,42 +564,5 @@ class AppointmentController extends Controller
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement('SELECT pg_advisory_xact_lock(?)', [$staffId]);
         }
-    }
-
-    /**
-     * Reject any unknown query-string key with a 422 listing the
-     * unrecognized fields. Used by list endpoints that want a closed
-     * allowlist of query params.
-     *
-     * @param  array<int, string>  $allowedKeys
-     */
-    private function rejectUnknownFilters(Request $request, array $allowedKeys): void
-    {
-        $unknown = array_values(array_diff(array_keys($request->query()), $allowedKeys));
-        if (! empty($unknown)) {
-            abort(response()->json([
-                'message' => 'Bilinmeyen filtre parametreleri: '.implode(', ', $unknown),
-                'errors' => array_fill_keys($unknown, ['Bu filtre kabul edilmiyor.']),
-            ], 422));
-        }
-    }
-
-    private function isUniqueViolation(QueryException $e): bool
-    {
-        $driver = DB::connection()->getDriverName();
-
-        if ($driver === 'mysql') {
-            return ($e->errorInfo[1] ?? null) === 1062;
-        }
-
-        if ($driver === 'pgsql') {
-            return ($e->errorInfo[0] ?? null) === '23505';
-        }
-
-        if ($driver === 'sqlite') {
-            return str_contains($e->getMessage(), 'UNIQUE constraint failed');
-        }
-
-        return false;
     }
 }

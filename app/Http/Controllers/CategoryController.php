@@ -43,6 +43,11 @@ class CategoryController extends Controller
 
     public function show(Category $category)
     {
+        // Public endpoint: do not expose soft-deleted records.
+        if ($category->trashed()) {
+            return response()->json(['message' => 'Kategori bulunamadı.'], 404);
+        }
+
         return response()->json($category->load('services'));
     }
 

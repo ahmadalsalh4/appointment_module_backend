@@ -53,10 +53,26 @@ class Appointment extends Model
 
                 return;
             }
-            $start = $appointment->start_date instanceof \DateTimeInterface
-                ? $appointment->start_date->format('Y-m-d H:i:s')
-                : (string) $appointment->start_date;
-            $appointment->conflict_key = $appointment->staff_id.'|'.$start;
+            if (! $appointment->start_date instanceof \DateTimeInterface) {
+                // Defensive: a missing or malformed start_date would
+                // produce a bogus conflict_key. Refuse to save rather than
+                // silently insert garbage.
+                throw new \InvalidArgumentException('Appointment start_date must be a DateTimeInterface.');
+            }
+            if ($appointment->staff_id === null) {
+                // A non-terminal appointment without a staff_id would
+                // generate a conflict_key of "|datetime" which defeats
+                // the unique constraint (multiple NULL segments). Bail.
+                throw new \InvalidArgumentException('Appointment must have a staff_id when not in a terminal state.');
+            }
+            // Microsecond precision keeps the conflict_key in sync with
+            // any future migration that widens start_date to
+            // datetime(6)/timestamptz(6). Today the column is
+            // second-precision on MySQL (datetime) and zero-precision on
+            // postgres (timestamp(0)), so the trailing .uuuuuu is
+            // effectively constant — but it costs nothing and avoids
+            // drift when the schema evolves.
+            $appointment->conflict_key = $appointment->staff_id.'|'.$appointment->start_date->format('Y-m-d H:i:s.u');
         });
     }
 

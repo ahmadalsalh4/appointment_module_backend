@@ -22,10 +22,15 @@ use Illuminate\Support\Facades\Route;
 // observability but does not appear in any UI. Render web services
 // don't expose a shell, so this is how operators run whitelisted
 // artisan commands after deploy.
-Route::post('/internal/artisan', [ArtisanCommandController::class, 'run']);
+// Throttled: a legitimate token holder (or a leak) could otherwise
+// hammer whitelisted artisan commands (migrate, queue:work, ...) without bound.
+Route::post('/internal/artisan', [ArtisanCommandController::class, 'run'])
+    ->middleware('throttle:30,1');
 
 // ============ BİRLEŞİK GİRİŞ (herkese açık) ============
-Route::post('/login', [UnifiedAuthController::class, 'login'])->middleware('throttle:10,1');
+// Uses the named `login` limiter (registered in AppServiceProvider) which
+// keys by `email + IP`, not just IP. Defeats simple IP rotation.
+Route::post('/login', [UnifiedAuthController::class, 'login'])->middleware('throttle:login');
 
 // ============ ROL İŞLEMLERİ (herhangi bir guard ile giriş yapmış kullanıcı) ============
 Route::middleware(['auth:customer,staff,admin', 'throttle:10,1'])->group(function () {
@@ -40,7 +45,7 @@ Route::prefix('customer')->group(function () {
 });
 
 // ============ HERKESE AÇIK (login gerekmez) ============
-Route::middleware('throttle:60,1')->group(function () {
+Route::middleware('throttle:availability')->group(function () {
     Route::get('/categories', [CategoryController::class, 'index']);
     Route::get('/categories/{category}', [CategoryController::class, 'show']);
     Route::get('/services', [ServiceController::class, 'index']);

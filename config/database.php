@@ -59,6 +59,13 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // Pin the session timezone to Europe/Istanbul so date-based
+            // WHERE clauses (whereDate, scopeOnDate) interpret stored
+            // DATETIME values through the business timezone. Mirrors the
+            // pgsql block above. Without this a 23:30 Istanbul start_date
+            // stored as-is can be missed by a `date=…` filter when MySQL
+            // session vs PHP time disagree on the calendar day.
+            'timezone' => env('DB_TIMEZONE', 'Europe/Istanbul'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

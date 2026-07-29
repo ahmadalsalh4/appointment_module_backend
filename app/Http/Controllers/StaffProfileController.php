@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Admin;
+use App\Models\Customer;
+use App\Support\Concerns\HandlesUniqueViolation;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -9,6 +12,8 @@ use Illuminate\Validation\Rule;
 
 class StaffProfileController extends Controller
 {
+    use HandlesUniqueViolation;
+
     public function show(Request $request)
     {
         $staff = $request->user();
@@ -24,7 +29,18 @@ class StaffProfileController extends Controller
         // self-service endpoint. Staff cannot reassign their own
         // category — only admins can, via PUT /staff-members/{id}.
         $validated = $request->validate([
-            'email' => ['sometimes', 'email', Rule::unique('staff', 'email')->ignore($staff->id)],
+            'email' => [
+                'sometimes', 'filled', 'email',
+                Rule::unique('staff', 'email')->ignore($staff->id),
+                function ($attribute, $value, $fail) {
+                    if (
+                        Customer::where('email', $value)->exists()
+                        || Admin::where('email', $value)->exists()
+                    ) {
+                        $fail('Bu email adresi zaten başka bir rolde kullanılıyor.');
+                    }
+                },
+            ],
             'password' => ['sometimes', 'string', 'min:8', 'confirmed'],
             'job_title' => ['sometimes', 'string', 'max:100'],
             'name' => ['sometimes', 'string', 'max:100'],
@@ -53,31 +69,11 @@ class StaffProfileController extends Controller
             });
         } catch (QueryException $e) {
             if ($this->isUniqueViolation($e)) {
-                return response()->json([
-                    'message' => 'Telefon numarası başka bir kullanıcıda kayıtlı.',
-                    'errors' => ['phone_number' => ['Bu telefon numarası zaten kullanılıyor.']],
-                ], 422);
+                return $this->uniqueViolationResponse($e, defaultField: 'phone_number');
             }
             throw $e;
         }
 
         return response()->json($staff->load(['person', 'managingAdmin.person', 'category']));
-    }
-
-    private function isUniqueViolation(QueryException $e): bool
-    {
-        $driver = DB::connection()->getDriverName();
-
-        if ($driver === 'pgsql') {
-            return ($e->errorInfo[0] ?? null) === '23505';
-        }
-        if ($driver === 'mysql') {
-            return ($e->errorInfo[1] ?? null) === 1062;
-        }
-        if ($driver === 'sqlite') {
-            return str_contains($e->getMessage(), 'UNIQUE constraint failed');
-        }
-
-        return false;
     }
 }
