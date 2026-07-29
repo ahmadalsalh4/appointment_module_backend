@@ -30,14 +30,17 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     php artisan migrate --force --no-interaction
 fi
 
-# 4. Refuse to seed unless APP_ENV=local AND SEED_DATABASE=true.
+# 4. Seed only when APP_ENV=local AND SEED_DATABASE=true. In production
+#    we treat the request as a misconfiguration but warn-and-skip rather
+#    than exit, so the web service still boots. The mistake is visible
+#    in the deploy logs and worth investigating, but breaking the boot
+#    would cause restart loops on Render.
 if [ "${SEED_DATABASE:-false}" = "true" ]; then
     if [ "${APP_ENV:-production}" = "local" ]; then
         echo "Seeding database (local + SEED_DATABASE=true)..."
         php artisan db:seed --force --no-interaction
     else
-        echo "Refusing to seed: SEED_DATABASE=true requires APP_ENV=local (currently '${APP_ENV}')." >&2
-        exit 1
+        echo "WARN: SEED_DATABASE=true ignored because APP_ENV='${APP_ENV:-production}'. Set both APP_ENV=local and SEED_DATABASE=true to actually seed." >&2
     fi
 fi
 
