@@ -78,6 +78,13 @@ return [
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
             'application_name' => env('APP_NAME', 'Laravel'),
+            // Pin the session timezone to Europe/Istanbul so date-based
+            // WHERE clauses (scopeOnDate, whereDate) interpret stored
+            // timestamptz values through the business timezone instead
+            // of the database's default (UTC). Otherwise a 23:30 Istanbul
+            // appointment stored as 20:30 UTC is missed by a `date=…`
+            // filter when Istanbul and UTC disagree on the calendar day.
+            'timezone' => env('DB_TIMEZONE', 'Europe/Istanbul'),
             'options' => [
                 // Render Postgres requires SSL in production but is
                 // permissive in dev. The DB_SSL env lets us hard-enable
