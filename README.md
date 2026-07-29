@@ -250,14 +250,66 @@ CI: GitHub Actions `.github/workflows/api-ci.yml` Postgres service container ile
 
 ## Production Deployment (Render)
 
-`render.yaml` Blueprint iki servisi tanımlar:
+`render.yaml` Blueprint üç servisi tanımlar:
 
 1. **Postgres** (`pserv`, Starter): 7 günlük PITR.
 2. **Web** (`web`, Docker): `Dockerfile` üzerinden derlenir; ortam değişkenleri dashboard link ile sağlanır.
+3. **Job** (`job`, Docker): bir seferlik artisan komutları çalıştırmak için `Dockerfile.job`. Dashboard → Manual Run ile tetiklenir.
 
 Healthcheck `/up`. `RUN_MIGRATIONS=true` her container açılışında `migrate --force` çalıştırır; `SEED_DATABASE=true` yalnızca `APP_ENV=local` ile seed adımını çalıştırır, aksi hâlde entrypoint hata verir. `APP_KEY` Render env group'tan sağlanır; mevcut .env üzerine yazılmaz.
 
 Netlify frontend için `CORS_ALLOWED_ORIGINS` env değişkenine Netlify production URL'i + `*.netlify.app` regex'i `config/cors.php` içinde izinlidir.
+
+### Render'da shell yok — nasıl artisan çalıştırılır?
+
+Render web servisleri Shell erişimi sağlamaz. Bunun yerine iki yol var:
+
+**Yol A — HTTP üzerinden (önerilen).** `INTERNAL_ARTISAN_TOKEN` env değişkenini Render dashboard'da ayarlayın; ardından dışarıdan (CI, kendi terminaliniz) şu çağrıyı yapabilirsiniz:
+
+```bash
+TOKEN=$(printenv INTERNAL_ARTISAN_TOKEN)
+curl -s -X POST https://appointment-module-api.onrender.com/api/internal/artisan \
+  -H "X-Internal-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"command":"migrate","flags":["--force"]}'
+
+curl ... -d '{"command":"migrate-status"}'
+curl ... -d '{"command":"app-status"}'
+curl ... -d '{"command":"dedupe-preview"}'
+```
+
+`command` alanı kapalı bir allowlist'ten seçilir (bilinmeyen → 422). `migrate-fresh` ayrıca `CONFIRM_RESET_DB=YES` env değerini ister. Boş token → endpoint 404 döner, varlığı gizlidir.
+
+İzin verilen komutlar:
+
+| `command` (public)        | Altında çalışan                            | Notlar |
+|---------------------------|--------------------------------------------|--------|
+| `migrate`                 | `migrate --force --no-interaction`         | |
+| `migrate-fresh`           | `migrate:fresh --force --no-interaction`   | `CONFIRM_RESET_DB=YES` gerekli |
+| `migrate-rollback`        | `migrate:rollback --force --no-interaction` | |
+| `migrate-status`          | `migrate:status`                           | salt okunur |
+| `config-clear`            | `config:clear`                             | |
+| `cache-clear`             | `cache:clear`                              | |
+| `route-clear`             | `route:clear`                              | |
+| `view-clear`              | `view:clear`                               | |
+| `event-clear`             | `event:clear`                              | |
+| `optimize`                | `optimize`                                 | |
+| `optimize-clear`          | `optimize:clear`                           | |
+| `storage-link`            | `storage:link`                             | |
+| `queue-work-once`         | `queue:work --once --stop-when-empty`      | |
+| `app-status`              | `app:status`                               | salt okunur hata özeti |
+| `dedupe-preview`          | `data:dedupe-before-unique --dry-run`      | salt okunur |
+
+**Yol B — Render Job (bir kereye mahsus).** `render.yaml` Blueprint zaten `appointment-module-oneshot` adlı bir `type: job` hizmeti tanımlar. Render dashboard → Job → "Manual Run" ile tetikleyin; çalışacak komut `JOB_COMMAND` env'inden okunur. Örnekler:
+
+```
+migrate --force --no-interaction
+migrate:fresh --force --no-interaction       (önce CONFIRM_RESET_DB=YES ekleyin)
+data:dedupe-before-unique --dry-run
+app:status
+```
+
+> **Uyarı:** `JOB_COMMAND` boşsa job exit code 64 ile çıkar ve dashboard "failed" gösterir. Render, Job için env var'ı tetikleme zamanında override edebilmenizi sağlar.
 
 ## Lisans
 

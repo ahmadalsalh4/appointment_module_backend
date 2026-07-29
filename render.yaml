@@ -17,6 +17,8 @@ services:
     region: oregon
     healthCheckPath: /up
     autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     envVars:
       - key: APP_ENV
         value: production
@@ -58,6 +60,71 @@ services:
         value: database
       - key: DB_SSLMODE
         value: require
+      # REQUIRED for the internal artisan bridge. Replace the value
+      # below with a 64+ character random string. Render Jobs and curl
+      # calls must include this exact value in the X-Internal-Token
+      # header. If unset, POST /api/internal/artisan returns 404.
+      - key: INTERNAL_ARTISAN_TOKEN
+        generateValue: true
     # DATABASE_URL is auto-injected by Render when the db service is
     # linked to this web service. Do NOT hardcode it here; the dashboard
     # link does it for you.
+
+  # One-off command runner for situations that the artisan bridge can't
+  # handle (e.g. running migration --pretend before applying, running
+  # the dedupe data command interactively, seeding a fresh database).
+  # Trigger from the Render dashboard → Jobs → "Manual Run". Override
+  # the JOB_COMMAND env var at trigger time. The build context is the
+  # same repository; Dockerfile.job produces an image that runs an
+  # arbitrary artisan command and exits.
+  - type: job
+    name: appointment-module-oneshot
+    runtime: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./Dockerfile.job
+    dockerContext: .
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        syncValueFromService:
+          service: appointment-module-api
+          key: APP_KEY
+      - key: APP_URL
+        syncValueFromService:
+          service: appointment-module-api
+          key: APP_URL
+      - key: APP_TIMEZONE
+        value: Europe/Istanbul
+      - key: APP_LOCALE
+        value: en
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: BCRYPT_ROUNDS
+        value: "12"
+      - key: LOG_CHANNEL
+        value: stack
+      - key: LOG_STACK
+        value: single
+      - key: LOG_LEVEL
+        value: info
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: SESSION_DRIVER
+        value: database
+      - key: DB_SSLMODE
+        value: require
+      # Set per-trigger via the Render dashboard → Manual Run → Override
+      # environment. Examples:
+      #   migrate --force --no-interaction
+      #   migrate:fresh --force --no-interaction   (also requires
+      #       CONFIRM_RESET_DB=YES in the job's env)
+      #   data:dedupe-before-unique --dry-run
+      #   app:status
+      - key: JOB_COMMAND
+        value: app:status

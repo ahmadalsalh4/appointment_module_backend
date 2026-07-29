@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AdminProfileController;
 use App\Http\Controllers\AppointmentController;
+use App\Http\Controllers\ArtisanCommandController;
 use App\Http\Controllers\AuthRefreshController;
 use App\Http\Controllers\AvailabilityController;
 use App\Http\Controllers\CategoryController;
@@ -14,6 +15,14 @@ use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StaffProfileController;
 use App\Http\Controllers\UnifiedAuthController;
 use Illuminate\Support\Facades\Route;
+
+// ============ INTERNAL ARTISAN BRIDGE (operator only) ============
+// Disabled unless INTERNAL_ARTISAN_TOKEN is set. Token is checked
+// against the X-Internal-Token request header. The route is named for
+// observability but does not appear in any UI. Render web services
+// don't expose a shell, so this is how operators run whitelisted
+// artisan commands after deploy.
+Route::post('/internal/artisan', [ArtisanCommandController::class, 'run']);
 
 // ============ BİRLEŞİK GİRİŞ (herkese açık) ============
 Route::post('/login', [UnifiedAuthController::class, 'login'])->middleware('throttle:10,1');

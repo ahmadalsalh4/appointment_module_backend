@@ -1,0 +1,54 @@
+FROM php:8.4-fpm
+
+# One-shot job runtime. Same base dependencies as the web image but
+# instead of running nginx + PHP-FPM via supervisord, it executes a
+# single artisan command from $JOB_COMMAND and exits. Render's Job
+# service invokes this on demand from the dashboard.
+
+RUN apt-get update && apt-get install -y \
+        libpq-dev \
+        libzip-dev \
+        libicu-dev \
+        zip \
+        unzip \
+        git \
+        curl \
+        gettext-base \
+    && docker-php-ext-install pdo pdo_pgsql zip intl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www
+
+COPY --chown=root:root . .
+
+ENV COMPOSER_ALLOW_SUPERUSER=1
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts \
+    && composer dump-autoload --optimize --no-dev
+
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache \
+    && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
+
+# Override entrypoint: render a .env from .env.example at run time
+# (so Render's process env wins), then exec the JOB_COMMAND env var
+# (set by Render dashboard / CLI at job-trigger time) and exit. If
+# no JOB_COMMAND is set, print a usage hint and exit non-zero.
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'set -e' \
+    'cd /var/www' \
+    'if [ -z "${JOB_COMMAND:-}" ]; then' \
+    '    echo "JOB_COMMAND env var is required. Set it in the Render dashboard." >&2' \
+    '    exit 64' \
+    'fi' \
+    'if [ -f .env.example ]; then' \
+    '    envsubst < .env.example > /tmp/.env.new' \
+    '    mv /tmp/.env.new .env' \
+    'fi' \
+    'echo "[job] $(date -Iseconds) running: $JOB_COMMAND"' \
+    'exec php artisan $JOB_COMMAND' > /usr/local/bin/job-entrypoint.sh \
+    && chmod +x /usr/local/bin/job-entrypoint.sh
+
+CMD ["/usr/local/bin/job-entrypoint.sh"]

@@ -81,3 +81,14 @@ All notable changes to the Appointment Module, grouped by phase.
 
 - `README.md` rewritten with: unified `/login` endpoint, schema rename note, Render deployment section, full endpoint table, and updated test inventory.
 - Netlify `netlify.toml` (frontend repo) gains the SPA-wide security headers.
+
+## Operator access — Render has no shell
+
+Render web services don't expose a shell, so `php artisan` calls can't be run interactively. Two mechanisms added:
+
+- `POST /api/internal/artisan` with a closed allowlist of commands (`migrate`, `migrate:fresh` gated on `CONFIRM_RESET_DB=YES`, `config:clear`, `cache:clear`, `app:status`, `data:dedupe-before-unique --dry-run`, etc.). Disabled unless `INTERNAL_ARTISAN_TOKEN` is set; token comparison via `hash_equals`. Tests cover the disabled, wrong-token, unknown-command, allowlist-flag, and refusal-without-CONFIRM_RESET_DB cases.
+- `Dockerfile.job` + a `type: job` Render service (`appointment-module-oneshot`) for one-off artisan commands. Triggerable from the Render dashboard; the running command comes from `JOB_COMMAND` injected at trigger time.
+
+Tests for the new behaviour live in `tests/Feature/ArtisanBridgeTest.php` (8 cases).
+
+Total suite: **43 tests passing**.
