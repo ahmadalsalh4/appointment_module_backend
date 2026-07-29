@@ -7,6 +7,7 @@ use App\Models\Appointment;
 use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Status;
+use App\Support\AppointmentStateMachine;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -19,43 +20,52 @@ class AppointmentController extends Controller
      */
     public function index(Request $request)
     {
+        $allowedKeys = [
+            'tab', 'status_id', 'staff_id', 'date', 'customer_name',
+            'sort_by', 'sort_order', 'per_page', 'page',
+        ];
+        $this->rejectUnknownFilters($request, $allowedKeys);
+
+        $request->validate([
+            'tab' => ['sometimes', 'in:upcoming,pending,completed,cancelled'],
+            'status_id' => ['sometimes', 'integer', 'min:1', 'max:4'],
+            'staff_id' => ['sometimes', 'integer'],
+            'date' => ['sometimes', 'date_format:Y-m-d'],
+            'customer_name' => ['sometimes', 'string', 'max:200'],
+            'sort_by' => ['sometimes', 'in:start_date,state_id,created_at'],
+            'sort_order' => ['sometimes', 'in:asc,desc'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+        ]);
+
         $admin = $request->user();
 
-        $managedStaffIds = Staff::where('admin_id', $admin->id)->pluck('id');
+        $managedStaffIds = Staff::where('admin_id', (int) $admin->id)->pluck('id');
 
         $query = Appointment::with(['staff.person', 'customer.person', 'service', 'status'])
             ->whereIn('staff_id', $managedStaffIds);
 
         if ($request->filled('tab')) {
-            $validTabs = ['upcoming', 'pending', 'completed', 'cancelled'];
-            if (! in_array($request->tab, $validTabs, true)) {
-                return response()->json(['message' => 'Geçersiz tab değeri. Kullanılabilecek değerler: upcoming, pending, completed, cancelled.'], 422);
-            }
             $query->tab($request->tab);
         }
-
         if ($request->filled('status_id')) {
-            $query->byStatus($request->status_id);
+            $query->byStatus((int) $request->status_id);
         }
-
         if ($request->filled('date')) {
             $query->onDate($request->date);
         }
-
         if ($request->filled('staff_id')) {
-            $query->forStaff($request->staff_id);
+            $query->forStaff((int) $request->staff_id);
         }
-
         if ($request->filled('customer_name')) {
-            $query->searchCustomer($request->customer_name);
+            $query->searchCustomer((string) $request->customer_name);
         }
 
-        $allowedSorts = ['start_date', 'state_id', 'created_at'];
-        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true)
-            ? strtolower($request->get('sort_order', 'asc')) : 'asc';
+        $sortOrder = strtolower((string) $request->get('sort_order', 'asc'));
+        $sortOrder = in_array($sortOrder, ['asc', 'desc'], true) ? $sortOrder : 'asc';
 
-        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts, true)) {
-            $query->orderBy($request->sort_by, $sortOrder);
+        if (in_array((string) $request->get('sort_by'), ['start_date', 'state_id', 'created_at'], true)) {
+            $query->orderBy((string) $request->get('sort_by'), $sortOrder);
         } else {
             $query->orderBy('start_date', 'asc');
         }
@@ -70,35 +80,48 @@ class AppointmentController extends Controller
      */
     public function myAppointments(Request $request)
     {
+        // Reject unknown filter shapes early so we never silently drop them.
+        $allowedKeys = [
+            'tab', 'status_id', 'staff_id', 'date',
+            'sort_by', 'sort_order', 'per_page', 'page',
+        ];
+        $this->rejectUnknownFilters($request, $allowedKeys);
+
+        $request->validate([
+            'tab' => ['sometimes', 'in:upcoming,pending,completed,cancelled'],
+            'status_id' => ['sometimes', 'integer', 'min:1', 'max:4'],
+            'staff_id' => ['sometimes', 'integer'],
+            'date' => ['sometimes', 'date_format:Y-m-d'],
+            'sort_by' => ['sometimes', 'in:start_date,state_id,created_at'],
+            'sort_order' => ['sometimes', 'in:asc,desc'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            // customer_name intentionally not accepted — a customer can
+            // only ever see their own appointments, and the frontend has
+            // been updated to omit the search input on this view.
+        ]);
+
         $query = Appointment::where('customer_id', $request->user()->id)
             ->with(['staff.person', 'service', 'status']);
 
         if ($request->filled('tab')) {
-            $validTabs = ['upcoming', 'pending', 'completed', 'cancelled'];
-            if (! in_array($request->tab, $validTabs, true)) {
-                return response()->json(['message' => 'Geçersiz tab değeri. Kullanılabilecek değerler: upcoming, pending, completed, cancelled.'], 422);
-            }
             $query->tab($request->tab);
         }
-
         if ($request->filled('status_id')) {
-            $query->byStatus($request->status_id);
+            $query->byStatus((int) $request->status_id);
         }
-
         if ($request->filled('staff_id')) {
-            $query->forStaff($request->staff_id);
+            $query->forStaff((int) $request->staff_id);
         }
-
         if ($request->filled('date')) {
             $query->onDate($request->date);
         }
 
-        $allowedSorts = ['start_date', 'state_id', 'created_at'];
-        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true)
-            ? strtolower($request->get('sort_order', 'asc')) : 'asc';
+        $sortOrder = strtolower((string) $request->get('sort_order', 'asc'));
+        $sortOrder = in_array($sortOrder, ['asc', 'desc'], true) ? $sortOrder : 'asc';
 
-        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts, true)) {
-            $query->orderBy($request->sort_by, $sortOrder);
+        if (in_array((string) $request->get('sort_by'), ['start_date', 'state_id', 'created_at'], true)) {
+            $query->orderBy((string) $request->get('sort_by'), $sortOrder);
         } else {
             $query->orderBy('start_date', 'asc');
         }
@@ -113,37 +136,46 @@ class AppointmentController extends Controller
      */
     public function myStaffAppointments(Request $request)
     {
+        $allowedKeys = [
+            'tab', 'status_id', 'date', 'customer_name',
+            'sort_by', 'sort_order', 'per_page', 'page',
+        ];
+        $this->rejectUnknownFilters($request, $allowedKeys);
+
+        $request->validate([
+            'tab' => ['sometimes', 'in:upcoming,pending,completed,cancelled'],
+            'status_id' => ['sometimes', 'integer', 'min:1', 'max:4'],
+            'date' => ['sometimes', 'date_format:Y-m-d'],
+            'customer_name' => ['sometimes', 'string', 'max:200'],
+            'sort_by' => ['sometimes', 'in:start_date,state_id,created_at'],
+            'sort_order' => ['sometimes', 'in:asc,desc'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+        ]);
+
         $staff = $request->user();
 
         $query = Appointment::where('staff_id', $staff->id)
             ->with(['customer.person', 'service', 'status']);
 
         if ($request->filled('tab')) {
-            $validTabs = ['upcoming', 'pending', 'completed', 'cancelled'];
-            if (! in_array($request->tab, $validTabs, true)) {
-                return response()->json(['message' => 'Geçersiz tab değeri. Kullanılabilecek değerler: upcoming, pending, completed, cancelled.'], 422);
-            }
             $query->tab($request->tab);
         }
-
         if ($request->filled('status_id')) {
-            $query->byStatus($request->status_id);
+            $query->byStatus((int) $request->status_id);
         }
-
         if ($request->filled('date')) {
             $query->onDate($request->date);
         }
-
         if ($request->filled('customer_name')) {
-            $query->searchCustomer($request->customer_name);
+            $query->searchCustomer((string) $request->customer_name);
         }
 
-        $allowedSorts = ['start_date', 'state_id', 'created_at'];
-        $sortOrder = in_array(strtolower($request->get('sort_order', 'asc')), ['asc', 'desc'], true)
-            ? strtolower($request->get('sort_order', 'asc')) : 'asc';
+        $sortOrder = strtolower((string) $request->get('sort_order', 'asc'));
+        $sortOrder = in_array($sortOrder, ['asc', 'desc'], true) ? $sortOrder : 'asc';
 
-        if ($request->filled('sort_by') && in_array($request->sort_by, $allowedSorts, true)) {
-            $query->orderBy($request->sort_by, $sortOrder);
+        if (in_array((string) $request->get('sort_by'), ['start_date', 'state_id', 'created_at'], true)) {
+            $query->orderBy((string) $request->get('sort_by'), $sortOrder);
         } else {
             $query->orderBy('start_date', 'asc');
         }
@@ -163,7 +195,7 @@ class AppointmentController extends Controller
         $staff = $request->user(); // auth:staff guard'ı sayesinde her zaman gerçek Staff instance
 
         $validated = $request->validate([
-            'state_id' => 'required|in:'.Status::CONFIRMED.','.Status::COMPLETED.','.Status::CANCELLED,
+            'state_id' => 'required|integer|in:'.Status::CONFIRMED.','.Status::COMPLETED.','.Status::CANCELLED,
         ]);
 
         return DB::transaction(function () use ($appointment, $staff, $validated) {
@@ -173,18 +205,17 @@ class AppointmentController extends Controller
                 return response()->json(['message' => 'Randevu bulunamadı.'], 404);
             }
 
-            if ($locked->staff_id !== $staff->id) {
+            if ((int) $locked->staff_id !== (int) $staff->id) {
                 return response()->json(['message' => 'Bu randevuyu güncelleme yetkiniz yok'], 403);
             }
 
-            $allowedTransitions = [
-                Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
-                Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
-            ];
-
-            $allowed = $allowedTransitions[$locked->state_id] ?? [];
-            if (! in_array($validated['state_id'], $allowed)) {
-                return response()->json(['message' => 'Bu durum geçişi geçersiz.'], 422);
+            $error = AppointmentStateMachine::errorMessage(
+                (int) $locked->state_id,
+                (int) $validated['state_id'],
+                'staff',
+            );
+            if ($error !== null) {
+                return response()->json(['message' => $error], 422);
             }
 
             $locked->update(['state_id' => $validated['state_id']]);
@@ -198,7 +229,7 @@ class AppointmentController extends Controller
      */
     public function myAppointmentDetail(Request $request, Appointment $appointment)
     {
-        if ($appointment->customer_id !== $request->user()->id) {
+        if ((int) $appointment->customer_id !== (int) $request->user()->id) {
             return response()->json(['message' => 'Bu randevuyu görme yetkiniz yok'], 403);
         }
 
@@ -210,7 +241,7 @@ class AppointmentController extends Controller
      */
     public function myStaffAppointmentDetail(Request $request, Appointment $appointment)
     {
-        if ($appointment->staff_id !== $request->user()->id) {
+        if ((int) $appointment->staff_id !== (int) $request->user()->id) {
             return response()->json(['message' => 'Bu randevuyu görme yetkiniz yok'], 403);
         }
 
@@ -254,7 +285,7 @@ class AppointmentController extends Controller
         $service = Service::findOrFail($validated['service_id']);
         $staff = Staff::findOrFail($validated['staff_id']);
 
-        if ($staff->catagory_id !== $service->catagory_id) {
+        if ((int) $staff->category_id !== (int) $service->category_id) {
             return response()->json([
                 'message' => 'Bu personel seçilen hizmeti sunmamaktadır.',
             ], 422);
@@ -390,19 +421,19 @@ class AppointmentController extends Controller
                 $updateData = [];
 
                 if (isset($validated['state_id'])) {
-                    $allowedTransitions = [
-                        Status::PENDING => [Status::CONFIRMED, Status::CANCELLED],
-                        Status::CONFIRMED => [Status::COMPLETED, Status::CANCELLED],
-                    ];
-                    $allowed = $allowedTransitions[$locked->state_id] ?? [];
-                    if (! in_array($validated['state_id'], $allowed)) {
-                        return ['status' => 422, 'body' => ['message' => 'Bu durum geçişi geçersiz.']];
+                    $error = AppointmentStateMachine::errorMessage(
+                        (int) $locked->state_id,
+                        (int) $validated['state_id'],
+                        'admin',
+                    );
+                    if ($error !== null) {
+                        return ['status' => 422, 'body' => ['message' => $error]];
                     }
                     $updateData['state_id'] = $validated['state_id'];
                 }
 
                 if (isset($validated['staff_id'])) {
-                    $isManaged = Staff::where('admin_id', $request->user()->id)
+                    $isManaged = Staff::where('admin_id', (int) $request->user()->id)
                         ->where('id', $staffId)->exists();
                     if (! $isManaged) {
                         return ['status' => 403, 'body' => ['message' => 'Bu personel sizin yönetiminizde değil.']];
@@ -418,7 +449,7 @@ class AppointmentController extends Controller
                         return ['status' => 404, 'body' => ['message' => 'Personel bulunamadı.']];
                     }
 
-                    if ($lockedStaff->catagory_id !== $service->catagory_id) {
+                    if ((int) $lockedStaff->category_id !== (int) $service->category_id) {
                         return ['status' => 422, 'body' => ['message' => 'Bu personel seçilen hizmeti sunmamaktadır.']];
                     }
 
@@ -473,7 +504,7 @@ class AppointmentController extends Controller
                 return response()->json(['message' => 'Randevu bulunamadı.'], 404);
             }
 
-            if ($locked->customer_id !== $request->user()->id) {
+            if ((int) $locked->customer_id !== (int) $request->user()->id) {
                 return response()->json(['message' => 'Bu randevuyu iptal etme yetkiniz yok'], 403);
             }
 
@@ -529,7 +560,7 @@ class AppointmentController extends Controller
                     return null;
                 }
 
-                if ($locked->customer_id !== $request->user()->id) {
+                if ((int) $locked->customer_id !== (int) $request->user()->id) {
                     return 'forbidden';
                 }
 
@@ -543,7 +574,7 @@ class AppointmentController extends Controller
                     return 'no_staff';
                 }
 
-                if ($lockedStaff->catagory_id !== $service->catagory_id) {
+                if ((int) $lockedStaff->category_id !== (int) $service->category_id) {
                     return 'wrong_category';
                 }
 
@@ -661,8 +692,8 @@ class AppointmentController extends Controller
      */
     private function canAccess(Admin $admin, Appointment $appointment): bool
     {
-        return Staff::where('admin_id', $admin->id)
-            ->where('id', $appointment->staff_id)
+        return Staff::where('admin_id', (int) $admin->id)
+            ->where('id', (int) $appointment->staff_id)
             ->exists();
     }
 
@@ -676,6 +707,24 @@ class AppointmentController extends Controller
     {
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement('SELECT pg_advisory_xact_lock(?)', [$staffId]);
+        }
+    }
+
+    /**
+     * Reject any unknown query-string key with a 422 listing the
+     * unrecognized fields. Used by list endpoints that want a closed
+     * allowlist of query params.
+     *
+     * @param  array<int, string>  $allowedKeys
+     */
+    private function rejectUnknownFilters(Request $request, array $allowedKeys): void
+    {
+        $unknown = array_values(array_diff(array_keys($request->query()), $allowedKeys));
+        if (! empty($unknown)) {
+            abort(response()->json([
+                'message' => 'Bilinmeyen filtre parametreleri: '.implode(', ', $unknown),
+                'errors' => array_fill_keys($unknown, ['Bu filtre kabul edilmiyor.']),
+            ], 422));
         }
     }
 

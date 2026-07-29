@@ -56,7 +56,7 @@ class BackendFixesTest extends TestCase
                     'phone_number' => uniqid('phone-staff-', true),
                 ])->id,
                 'job_title' => 'Barber',
-                'catagory_id' => $category->id,
+                'category_id' => $category->id,
                 'password' => 'password',
             ],
         );
@@ -88,7 +88,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Cut', 'duration' => 30]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'Standard Cut', 'duration' => 30]);
 
         $nextDate = now()->addDays(2)->format('Y-m-d');
         $response = $this->actingAs($customer, 'customer')->postJson('/api/appointments', [
@@ -107,7 +107,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Long Hair Cut', 'duration' => 45]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'Long Hair Cut', 'duration' => 45]);
 
         $nextDate = now()->addDays(2)->format('Y-m-d');
         $response = $this->actingAs($customer, 'customer')->postJson('/api/appointments', [
@@ -125,7 +125,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Quick Cut', 'duration' => 30]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'Quick Cut', 'duration' => 30]);
 
         $nextDate = now()->addDays(2)->format('Y-m-d');
         $response = $this->actingAs($customer, 'customer')->postJson('/api/appointments', [
@@ -179,7 +179,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Cat1']);
         $staff = $this->makeStaff($admin, $category, 'st1@test.com');
         $customer = $this->makeCustomer('c1@test.com');
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'S1', 'duration' => 30]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'S1', 'duration' => 30]);
 
         $appointment = Appointment::create([
             'staff_id' => $staff->id,
@@ -200,11 +200,11 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
 
         // Contains a literal '%' character; only this should match the literal search "10%off".
-        ServiceModel::create(['catagory_id' => $category->id, 'name' => '10%off', 'duration' => 30]);
+        ServiceModel::create(['category_id' => $category->id, 'name' => '10%off', 'duration' => 30]);
         // Has an underscore that would match an unescaped '%' wildcard if escape were broken.
-        ServiceModel::create(['catagory_id' => $category->id, 'name' => '10XXoff', 'duration' => 30]);
+        ServiceModel::create(['category_id' => $category->id, 'name' => '10XXoff', 'duration' => 30]);
         // Has a literal '_' character; would match an unescaped '_' wildcard if escape were broken.
-        ServiceModel::create(['catagory_id' => $category->id, 'name' => '10_off', 'duration' => 30]);
+        ServiceModel::create(['category_id' => $category->id, 'name' => '10_off', 'duration' => 30]);
 
         $exact = $this->actingAs($admin, 'admin')
             ->getJson('/api/services?name='.urlencode('10%off'))
@@ -240,7 +240,7 @@ class BackendFixesTest extends TestCase
         $ayse = Staff::create([
             'person_id' => $person->id,
             'job_title' => 'Barber',
-            'catagory_id' => $category->id,
+            'category_id' => $category->id,
             'email' => 'ayse@test.com',
             'password' => 'password',
         ]);
@@ -250,7 +250,7 @@ class BackendFixesTest extends TestCase
         $mehmet = Staff::create([
             'person_id' => $unrelated->id,
             'job_title' => 'Barber',
-            'catagory_id' => $category->id,
+            'category_id' => $category->id,
             'email' => 'mehmet@test.com',
             'password' => 'password',
         ]);
@@ -279,14 +279,16 @@ class BackendFixesTest extends TestCase
 
         $person = Person::create(['name' => 'Multi', 'surname' => 'Role', 'phone_number' => uniqid('p-', true)]);
         Customer::create(['person_id' => $person->id, 'email' => 'multi-x@test.com', 'password' => 'password']);
-        Staff::create([
+        $staff = Staff::create([
             'person_id' => $person->id,
-            'admin_id' => $admin->id,
             'job_title' => 'Barber',
-            'catagory_id' => $category->id,
+            'category_id' => $category->id,
             'email' => 'multi-x@test.com',
             'password' => 'password',
         ]);
+        // admin_id is intentionally not in Staff::$fillable — mirror the
+        // production StaffController::store pattern of forceFill + save.
+        $staff->forceFill(['admin_id' => $admin->id])->save();
 
         $login = $this->postJson('/api/login', [
             'email' => 'multi-x@test.com',
@@ -325,7 +327,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
 
         $tz = Staff::BUSINESS_TIMEZONE;
         $target = Carbon::now($tz)->addDay()->format('Y-m-d');
@@ -357,7 +359,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
 
         $tz = Staff::BUSINESS_TIMEZONE;
         $yesterday = Carbon::now($tz)->addDay()->subDay()->format('Y-m-d');
@@ -387,7 +389,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
 
         $tz = Staff::BUSINESS_TIMEZONE;
         $target = Carbon::now($tz)->addDay()->format('Y-m-d');
@@ -417,7 +419,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
 
         $tz = Staff::BUSINESS_TIMEZONE;
         $target = Carbon::now($tz)->addDay()->format('Y-m-d');
@@ -447,7 +449,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
 
         $tz = Staff::BUSINESS_TIMEZONE;
         $start = Carbon::now($tz)->addDay()->setTime(10, 0, 0);
@@ -479,7 +481,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
 
         $tz = Staff::BUSINESS_TIMEZONE;
         $start = Carbon::now($tz)->addDay()->setTime(10, 0, 0);
@@ -506,7 +508,7 @@ class BackendFixesTest extends TestCase
         $category = Category::create(['name' => 'Haircuts']);
         $staff = $this->makeStaff($admin, $category);
         $customer = $this->makeCustomer();
-        $service = ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
+        $service = ServiceModel::create(['category_id' => $category->id, 'name' => 'Standard Service', 'duration' => 30]);
 
         $tz = Staff::BUSINESS_TIMEZONE;
         $start = Carbon::now($tz)->addDay()->setTime(10, 0, 0);
@@ -543,10 +545,10 @@ class BackendFixesTest extends TestCase
     {
         $admin = $this->makeAdmin();
         $category = Category::create(['name' => 'Haircuts']);
-        ServiceModel::create(['catagory_id' => $category->id, 'name' => 'Cut', 'duration' => 30]);
+        ServiceModel::create(['category_id' => $category->id, 'name' => 'Cut', 'duration' => 30]);
 
         $response = $this->actingAs($admin, 'admin')->postJson('/api/services', [
-            'catagory_id' => $category->id,
+            'category_id' => $category->id,
             'name' => 'Cut',
             'duration' => 30,
         ]);
@@ -597,14 +599,14 @@ class BackendFixesTest extends TestCase
             'email' => 'multi-pw@test.com',
             'password' => Hash::make('customer-pass'),
         ]);
-        Staff::create([
+        $staff = Staff::create([
             'person_id' => $person->id,
             'email' => 'multi-pw@test.com',
             'job_title' => 'X',
-            'admin_id' => $admin->id,
-            'catagory_id' => $category->id,
+            'category_id' => $category->id,
             'password' => Hash::make('staff-pass'),
         ]);
+        $staff->forceFill(['admin_id' => $admin->id])->save();
 
         // Log in as customer first.
         $login = $this->postJson('/api/login', [

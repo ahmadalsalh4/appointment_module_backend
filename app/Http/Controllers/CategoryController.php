@@ -60,8 +60,12 @@ class CategoryController extends Controller
     public function destroy(Category $category)
     {
         return DB::transaction(function () use ($category) {
-            $hasActiveAppointments = Appointment::whereHas('service', function ($q) use ($category) {
-                $q->where('catagory_id', $category->id);
+            // Lock the category row so a concurrent booking can't slip in
+            // a new non-terminal appointment while we're checking.
+            $locked = Category::where('id', $category->id)->lockForUpdate()->first();
+
+            $hasActiveAppointments = Appointment::whereHas('service', function ($q) use ($locked) {
+                $q->where('category_id', $locked->id);
             })->whereNotIn('state_id', [Status::COMPLETED, Status::CANCELLED])->exists();
 
             if ($hasActiveAppointments) {
@@ -70,7 +74,7 @@ class CategoryController extends Controller
                 ], 409);
             }
 
-            $category->delete();
+            $locked->delete(); // soft-delete now that SoftDeletes is in place
 
             return response()->json(['message' => 'Kategori silindi']);
         });

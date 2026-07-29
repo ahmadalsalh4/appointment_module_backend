@@ -220,7 +220,7 @@ config/
 | `statuses` | Randevu durumları (pending, confirmed, completed, cancelled) |
 | `appointments` | Randevular |
 
-> **Not:** `catagorys` ve `appointmets` typo'ları düzeltildi — artık `categories` ve `appointments`. Ancak `catagory_id` kolon adı (FK) mevcut veriyle uyumluluk için olduğu gibi bırakıldı.
+> **Not:** `categories` ve `appointments` typo'ları düzeltildi. `catagory_id` kolon adı (FK) **artık `category_id`** olarak yeniden adlandırıldı — `2026_08_15_000001_rename_catagory_to_category` migrasyonu tüm ortamlarda otomatik olarak çalışır.
 
 ## Testler
 
@@ -238,6 +238,26 @@ Testler **Pest** ile yazılmıştır. Mevcut testler:
 - Admin'ler arası personel izolasyonu
 - Profil güncelleme uç noktaları
 - Tamamlanmış randevuyu iptal etmeyi reddetme
+- Çoklu rol kullanıcısı için `other_roles` doğrulaması
+- **State machine** geçişleri (pending → confirmed → completed, terminal koruması)
+- **Strict ID karşılaştırmaları** (admin başka admin'in staff'ına erişemez)
+- **Self-service category_id reddi** (personel kendi kategorisini değiştiremez)
+- **Telefon unique ihlali → 422 translation**
+- **Soft-delete randevu geçmişini korur**
+- **Filtre validation** (bilinmeyen parametre → 422)
+
+CI: GitHub Actions `.github/workflows/api-ci.yml` Postgres service container ile çalışır.
+
+## Production Deployment (Render)
+
+`render.yaml` Blueprint iki servisi tanımlar:
+
+1. **Postgres** (`pserv`, Starter): 7 günlük PITR.
+2. **Web** (`web`, Docker): `Dockerfile` üzerinden derlenir; ortam değişkenleri dashboard link ile sağlanır.
+
+Healthcheck `/up`. `RUN_MIGRATIONS=true` her container açılışında `migrate --force` çalıştırır; `SEED_DATABASE=true` yalnızca `APP_ENV=local` ile seed adımını çalıştırır, aksi hâlde entrypoint hata verir. `APP_KEY` Render env group'tan sağlanır; mevcut .env üzerine yazılmaz.
+
+Netlify frontend için `CORS_ALLOWED_ORIGINS` env değişkenine Netlify production URL'i + `*.netlify.app` regex'i `config/cors.php` içinde izinlidir.
 
 ## Lisans
 

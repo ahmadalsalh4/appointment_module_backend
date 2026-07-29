@@ -49,7 +49,7 @@ class AppointmentSeeder extends Seeder
                 continue;
             }
             $service = Service::where('name', $serviceName)
-                ->where('catagory_id', $s->catagory_id)
+                ->where('category_id', $s->category_id)
                 ->first();
             if (! $service) {
                 continue;

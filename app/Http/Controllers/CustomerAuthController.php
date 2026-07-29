@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\Customer;
 use App\Models\Person;
 use App\Models\Staff;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -37,19 +38,29 @@ class CustomerAuthController extends Controller
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        $customer = DB::transaction(function () use ($validated) {
-            $person = Person::create([
-                'name' => $validated['name'],
-                'surname' => $validated['surname'],
-                'phone_number' => $validated['phone_number'] ?? null,
-            ]);
+        try {
+            $customer = DB::transaction(function () use ($validated) {
+                $person = Person::create([
+                    'name' => $validated['name'],
+                    'surname' => $validated['surname'],
+                    'phone_number' => $validated['phone_number'] ?? null,
+                ]);
 
-            return Customer::create([
-                'person_id' => $person->id,
-                'email' => $validated['email'],
-                'password' => $validated['password'],
-            ]);
-        });
+                return Customer::create([
+                    'person_id' => $person->id,
+                    'email' => $validated['email'],
+                    'password' => $validated['password'],
+                ]);
+            });
+        } catch (QueryException $e) {
+            if ($this->isUniqueViolation($e)) {
+                return response()->json([
+                    'errors' => ['phone_number' => ['Bu telefon numarası zaten kullanılıyor.']],
+                    'message' => 'Doğrulama hatası.',
+                ], 422);
+            }
+            throw $e;
+        }
 
         $token = $customer->createToken('auth-token')->plainTextToken;
 
@@ -63,5 +74,26 @@ class CustomerAuthController extends Controller
         }
 
         return response()->json(['message' => 'Çıkış yapıldı']);
+    }
+
+    /**
+     * Translate DB unique-constraint violations into a 422 response so
+     * the client gets a structured validation error instead of a 500.
+     */
+    private function isUniqueViolation(QueryException $e): bool
+    {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            return ($e->errorInfo[0] ?? null) === '23505';
+        }
+        if ($driver === 'mysql') {
+            return ($e->errorInfo[1] ?? null) === 1062;
+        }
+        if ($driver === 'sqlite') {
+            return str_contains($e->getMessage(), 'UNIQUE constraint failed');
+        }
+
+        return false;
     }
 }

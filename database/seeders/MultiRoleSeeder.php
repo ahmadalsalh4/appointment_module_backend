@@ -50,8 +50,7 @@ class MultiRoleSeeder extends Seeder
                     'job_title' => 'Çoklu Rol Kullanıcısı',
                     'password' => Hash::make($password),
                     'admin_id' => $admin->id,
-                    // NOTE: `catagory_id` typo — see Staff model.
-                    'catagory_id' => $category->id,
+                    'category_id' => $category->id,
                 ],
             );
             $staffCreated = $staff->wasRecentlyCreated || $staff->wasChanged();

@@ -36,7 +36,7 @@ class ServiceSeeder extends Seeder
             foreach ($items as $item) {
                 Service::firstOrCreate(
                     [
-                        'catagory_id' => $category->id,
+                        'category_id' => $category->id,
                         'name' => $item['name'],
                     ],
                     ['duration' => $item['duration']],

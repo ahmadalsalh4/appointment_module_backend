@@ -57,8 +57,7 @@ class StaffSeeder extends Seeder
                         'job_title' => $member['job_title'],
                         'password' => Hash::make('staff123'),
                         'admin_id' => $admin->id,
-                        // NOTE: `catagory_id` typo — see Staff model.
-                        'catagory_id' => $category->id,
+                        'category_id' => $category->id,
                     ],
                 );
             }

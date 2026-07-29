@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Category extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'categories';
 
@@ -15,13 +16,11 @@ class Category extends Model
 
     public function services()
     {
-        // NOTE: `catagory_id` typo — see Service model.
-        return $this->hasMany(Service::class, 'catagory_id');
+        return $this->hasMany(Service::class, 'category_id');
     }
 
     public function staff()
     {
-        // NOTE: `catagory_id` typo — see Service model.
-        return $this->hasMany(Staff::class, 'catagory_id');
+        return $this->hasMany(Staff::class, 'category_id');
     }
 }

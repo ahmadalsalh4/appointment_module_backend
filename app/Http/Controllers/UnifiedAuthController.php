@@ -155,10 +155,25 @@ class UnifiedAuthController extends Controller
             return $model->createToken('auth-token')->plainTextToken;
         });
 
+        // Build other_roles list AFTER we've switched so we don't
+        // accidentally echo the role we just left.
+        $email = $user->email;
+        $otherRoles = [];
+        if ($targetRole !== 'customer' && Customer::where('email', $email)->exists()) {
+            $otherRoles[] = 'customer';
+        }
+        if ($targetRole !== 'staff' && Staff::where('email', $email)->exists()) {
+            $otherRoles[] = 'staff';
+        }
+        if ($targetRole !== 'admin' && Admin::where('email', $email)->exists()) {
+            $otherRoles[] = 'admin';
+        }
+
         return response()->json([
             'user' => $model->load($relations),
             'token' => $token,
             'role' => $targetRole,
+            'other_roles' => $otherRoles,
         ]);
     }
 

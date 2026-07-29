@@ -1,0 +1,63 @@
+services:
+  - type: pserv
+    name: appointment-module-db
+    plan: starter
+    region: oregon
+    ipAllowLists: []
+    env:
+      PGUSER: appointment
+    # Starter plan supports a 7-day point-in-time recovery window and
+    # 1 GB storage. Upgrade to "standard" if you need 30-day PITR or
+    # more storage.
+
+  - type: web
+    name: appointment-module-api
+    runtime: docker
+    plan: starter
+    region: oregon
+    healthCheckPath: /up
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        generateValue: true
+      - key: APP_URL
+        value: https://appointment-module-api.onrender.com
+      - key: APP_TIMEZONE
+        value: Europe/Istanbul
+      - key: APP_LOCALE
+        value: en
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: SANCTUM_STATEFUL_DOMAINS
+        value: localhost:5173,127.0.0.1:5173
+      - key: SANCTUM_EXPIRATION_MINUTES
+        value: "720"
+      - key: CORS_ALLOWED_ORIGINS
+        value: http://localhost:5173,http://127.0.0.1:5173,https://astounding-blancmange-80c978.netlify.app
+      - key: RUN_MIGRATIONS
+        value: "true"
+      - key: SEED_DATABASE
+        value: "false"
+      - key: BCRYPT_ROUNDS
+        value: "12"
+      - key: LOG_CHANNEL
+        value: stack
+      - key: LOG_STACK
+        value: single
+      - key: LOG_LEVEL
+        value: info
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: SESSION_DRIVER
+        value: database
+      - key: DB_SSLMODE
+        value: require
+    # DATABASE_URL is auto-injected by Render when the db service is
+    # linked to this web service. Do NOT hardcode it here; the dashboard
+    # link does it for you.

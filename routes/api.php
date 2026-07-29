@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AdminProfileController;
 use App\Http\Controllers\AppointmentController;
+use App\Http\Controllers\AuthRefreshController;
 use App\Http\Controllers\AvailabilityController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerAuthController;
@@ -21,21 +22,24 @@ Route::post('/login', [UnifiedAuthController::class, 'login'])->middleware('thro
 Route::middleware(['auth:customer,staff,admin', 'throttle:10,1'])->group(function () {
     Route::get('/me/roles', [UnifiedAuthController::class, 'myRoles']);
     Route::post('/switch-role', [UnifiedAuthController::class, 'switchRole']);
+    Route::post('/auth/refresh', [AuthRefreshController::class, 'refresh']);
 });
 
 // ============ MÜŞTERİ KAYIT (herkese açık) ============
 Route::prefix('customer')->group(function () {
-    Route::post('/register', [CustomerAuthController::class, 'register']);
+    Route::post('/register', [CustomerAuthController::class, 'register'])->middleware('throttle:30,1');
 });
 
 // ============ HERKESE AÇIK (login gerekmez) ============
-Route::get('/categories', [CategoryController::class, 'index']);
-Route::get('/categories/{category}', [CategoryController::class, 'show']);
-Route::get('/services', [ServiceController::class, 'index']);
-Route::get('/services/{service}', [ServiceController::class, 'show']);
-Route::get('/availability', [AvailabilityController::class, 'check']);
-Route::get('/services/{service}/staff', [ServiceController::class, 'getAvailableStaff']);
-Route::get('/categories/{category}/staff', [StaffController::class, 'byCategory']);
+Route::middleware('throttle:60,1')->group(function () {
+    Route::get('/categories', [CategoryController::class, 'index']);
+    Route::get('/categories/{category}', [CategoryController::class, 'show']);
+    Route::get('/services', [ServiceController::class, 'index']);
+    Route::get('/services/{service}', [ServiceController::class, 'show']);
+    Route::get('/availability', [AvailabilityController::class, 'check']);
+    Route::get('/services/{service}/staff', [ServiceController::class, 'getAvailableStaff']);
+    Route::get('/categories/{category}/staff', [StaffController::class, 'byCategory']);
+});
 
 // ============ MÜŞTERİ GİRİŞİ GEREKTİRİR ============
 Route::middleware(['auth:customer', 'ensureUserModel:App\Models\Customer'])->group(function () {

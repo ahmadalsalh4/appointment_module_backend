@@ -20,7 +20,7 @@ return [
 
     'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
         '%s%s',
-        'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
+        'localhost,localhost:3000,localhost:5173,127.0.0.1,127.0.0.1:8000,127.0.0.1:5173,::1',
         Sanctum::currentApplicationUrlWithPort(),
         // Sanctum::currentRequestHost(),
     ))),
@@ -31,13 +31,14 @@ return [
     |--------------------------------------------------------------------------
     |
     | This array contains the authentication guards that will be checked when
-    | Sanctum is trying to authenticate a request. If none of these guards
-    | are able to authenticate the request, Sanctum will use the bearer
-    | token that's present on an incoming request for authentication.
+    | Sanctum is trying to authenticate a request. The frontend is a pure
+    | bearer-token SPA — no cookies, no CSRF — so we explicitly empty the
+    | list. Sanctum's Guard will then skip session-based resolution entirely
+    | and go straight to the bearer-token path.
     |
     */
 
-    'guard' => ['web'],
+    'guard' => [],
 
     /*
     |--------------------------------------------------------------------------
@@ -50,7 +51,7 @@ return [
     |
     */
 
-    'expiration' => 60 * 24,
+    'expiration' => env('SANCTUM_EXPIRATION_MINUTES', 60 * 12),
 
     /*
     |--------------------------------------------------------------------------

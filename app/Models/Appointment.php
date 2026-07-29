@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\BusinessClock;
 use App\Support\SearchHelper;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -25,6 +26,9 @@ class Appointment extends Model
         'start_date' => 'datetime',
         'end_date' => 'datetime',
         'state_id' => 'integer',
+        'staff_id' => 'integer',
+        'customer_id' => 'integer',
+        'service_id' => 'integer',
     ];
 
     protected static function booted(): void
@@ -125,7 +129,7 @@ class Appointment extends Model
     {
         return match ($tab) {
             'upcoming' => $query->whereIn('state_id', [Status::PENDING, Status::CONFIRMED])
-                ->where('start_date', '>=', now()),
+                ->where('start_date', '>=', BusinessClock::now()),
             'pending' => $query->where('state_id', Status::PENDING),
             'completed' => $query->where('state_id', Status::COMPLETED),
             'cancelled' => $query->where('state_id', Status::CANCELLED),

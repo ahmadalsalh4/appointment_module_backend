@@ -16,7 +16,16 @@ class StaffController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Staff::where('admin_id', $request->user()->id);
+        $request->validate([
+            'name' => ['sometimes', 'string', 'max:200'],
+            'email' => ['sometimes', 'string', 'max:200'],
+            'sort_by' => ['sometimes', 'in:id,job_title,email,category_id,created_at,name'],
+            'sort_order' => ['sometimes', 'in:asc,desc'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+        ]);
+
+        $query = Staff::where('admin_id', (int) $request->user()->id);
 
         if ($request->filled('name')) {
             $escaped = SearchHelper::likeContains($request->name);
@@ -32,7 +41,7 @@ class StaffController extends Controller
             $query->whereRaw('email LIKE ? '.SearchHelper::ESCAPE_CLAUSE, [SearchHelper::likeContains($request->email)]);
         }
 
-        $allowedSorts = ['id', 'job_title', 'email', 'catagory_id', 'created_at', 'name'];
+        $allowedSorts = ['id', 'job_title', 'email', 'category_id', 'created_at', 'name'];
         $sortBy = $request->get('sort_by', 'id');
         $sortOrder = strtolower($request->get('sort_order', 'asc')) === 'desc' ? 'desc' : 'asc';
 
@@ -64,8 +73,7 @@ class StaffController extends Controller
             'job_title' => 'required|string|max:100',
             'email' => ['required', 'email', Rule::unique('staff', 'email')],
             'password' => 'required|string|min:8|confirmed',
-            // NOTE: `catagory_id` typo — see Staff model.
-            'catagory_id' => 'nullable|exists:categories,id',
+            'category_id' => 'nullable|exists:categories,id',
         ]);
 
         $staff = DB::transaction(function () use ($validated, $request) {
@@ -84,7 +92,7 @@ class StaffController extends Controller
                 'job_title' => $validated['job_title'],
                 'email' => $validated['email'],
                 'password' => $validated['password'],
-                'catagory_id' => $validated['catagory_id'] ?? null,
+                'category_id' => $validated['category_id'] ?? null,
             ]);
             $staff->forceFill(['admin_id' => $request->user()->id])->save();
 
@@ -96,7 +104,7 @@ class StaffController extends Controller
 
     public function show(Request $request, Staff $staff_member)
     {
-        if ($staff_member->admin_id !== $request->user()->id) {
+        if ((int) $staff_member->admin_id !== (int) $request->user()->id) {
             return response()->json(['message' => 'Bu personeli görüntüleme yetkiniz yok'], 403);
         }
 
@@ -105,7 +113,7 @@ class StaffController extends Controller
 
     public function update(Request $request, Staff $staff_member)
     {
-        if ($staff_member->admin_id !== $request->user()->id) {
+        if ((int) $staff_member->admin_id !== (int) $request->user()->id) {
             return response()->json(['message' => 'Bu personeli güncelleme yetkiniz yok'], 403);
         }
 
@@ -115,13 +123,12 @@ class StaffController extends Controller
             'name' => 'sometimes|string|max:100',
             'surname' => 'sometimes|string|max:100',
             'phone_number' => 'nullable|string|max:20',
-            // NOTE: `catagory_id` typo — see Staff model.
-            'catagory_id' => 'nullable|exists:categories,id',
+            'category_id' => 'nullable|exists:categories,id',
             'password' => 'sometimes|string|min:8|confirmed',
         ]);
 
         DB::transaction(function () use ($validated, $staff_member) {
-            $staffData = array_intersect_key($validated, array_flip(['job_title', 'email', 'catagory_id', 'password']));
+            $staffData = array_intersect_key($validated, array_flip(['job_title', 'email', 'category_id', 'password']));
             if (! empty($staffData)) {
                 $staff_member->update($staffData);
             }
@@ -137,28 +144,32 @@ class StaffController extends Controller
 
     public function destroy(Request $request, Staff $staff_member)
     {
-        if ($staff_member->admin_id !== $request->user()->id) {
+        if ((int) $staff_member->admin_id !== (int) $request->user()->id) {
             return response()->json(['message' => 'Bu personeli silme yetkiniz yok'], 403);
         }
 
-        $hasActiveAppointments = Appointment::where('staff_id', $staff_member->id)
-            ->whereNotIn('state_id', [Status::COMPLETED, Status::CANCELLED])
-            ->exists();
+        return DB::transaction(function () use ($staff_member) {
+            $locked = Staff::where('id', $staff_member->id)->lockForUpdate()->first();
 
-        if ($hasActiveAppointments) {
-            return response()->json([
-                'message' => 'Bu personele ait aktif randevular bulunduğu için silinemez.',
-            ], 409);
-        }
+            $hasActiveAppointments = Appointment::where('staff_id', $locked->id)
+                ->whereNotIn('state_id', [Status::COMPLETED, Status::CANCELLED])
+                ->exists();
 
-        $staff_member->delete();
+            if ($hasActiveAppointments) {
+                return response()->json([
+                    'message' => 'Bu personele ait aktif randevular bulunduğu için silinemez.',
+                ], 409);
+            }
 
-        return response()->json(['message' => 'Personel silindi']);
+            $locked->delete(); // soft-delete
+
+            return response()->json(['message' => 'Personel silindi']);
+        });
     }
 
     public function byCategory(Category $category, Request $request)
     {
-        $query = Staff::where('catagory_id', $category->id)->with('person');
+        $query = Staff::where('category_id', $category->id)->with('person');
 
         $allowedSorts = ['id', 'job_title', 'email', 'created_at'];
         $sortBy = in_array($request->get('sort_by', 'id'), $allowedSorts, true) ? $request->get('sort_by', 'id') : 'id';

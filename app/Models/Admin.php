@@ -18,6 +18,7 @@ class Admin extends Authenticatable
 
     protected $casts = [
         'password' => 'hashed',
+        'person_id' => 'integer',
     ];
 
     public function person()

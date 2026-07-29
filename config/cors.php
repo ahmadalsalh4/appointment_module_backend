@@ -28,10 +28,15 @@ return [
         'http://localhost:5173,http://127.0.0.1:5173,https://astounding-blancmange-80c978.netlify.app'
     ))))),
 
-    // Only use this for genuine regex matching (e.g. all Netlify preview
-    // deploy subdomains). Example, if you ever need it:
-    // 'allowed_origins_patterns' => ['#^https://.*--your-site\.netlify\.app$#'],
-    'allowed_origins_patterns' => [],
+    // Only use this for genuine regex matching (Netlify preview deploy
+    // subdomains, Render preview URLs). Netlify's preview URL scheme is
+    // `https://<branch>--<site-slug>.netlify.app`; this regex matches
+    // all of them while staying tied to the configured production site
+    // slug.
+    'allowed_origins_patterns' => [
+        '#^https://[a-z0-9-]+--astounding-blancmange-80c978\.netlify\.app$#',
+        '#^https://[a-z0-9-]+--[a-z0-9-]+\.onrender\.com$#',
+    ],
 
     'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
 

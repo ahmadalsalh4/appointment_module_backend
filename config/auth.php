@@ -18,13 +18,16 @@ return [
     */
 
     'defaults' => [
-        // NOTE: Default guard is intentionally left unset ('web') so that
-        // any code that calls auth()->user() without specifying a guard
-        // fails loudly instead of silently using the customer provider.
-        // Route groups below always specify auth:customer, auth:staff or
-        // auth:admin explicitly.
-        'guard' => env('AUTH_GUARD', 'web'),
-        'passwords' => env('AUTH_PASSWORD_BROKER', 'customers'),
+        // Default guard is intentionally 'web'. Route groups ALWAYS
+        // specify auth:customer / auth:staff / auth:admin explicitly, so
+        // this fallback only fires for code that forgets to do so — and
+        // we'd rather it fail loudly than silently authenticate a
+        // customer as the "default" user. The 'web' guard exists for
+        // Sanctum's cookie-mode resolution on stateful domains.
+        // NOTE: an empty AUTH_GUARD env value falls back to 'web' to
+        // avoid `Auth guard [] is not defined.` exceptions.
+        'guard' => env('AUTH_GUARD') ?: 'web',
+        'passwords' => env('AUTH_PASSWORD_BROKER') ?: 'customers',
     ],
 
     /*
@@ -45,6 +48,11 @@ return [
     */
 
     'guards' => [
+        'web' => [
+            'driver' => 'session',
+            'provider' => 'customers',
+        ],
+
         'customer' => [
             'driver' => 'sanctum',
             'provider' => 'customers',
